@@ -26,7 +26,7 @@ function loadCookies() {
   } catch(e) {}
 }
 
-// ---- Repeat peer history (localStorage) ----
+// ---- Repeat peer history ----
 function getHistory() {
   try { return JSON.parse(localStorage.getItem('frostPeerHistory') || '{}'); } catch(e) { return {}; }
 }
@@ -62,31 +62,29 @@ const themes = {
 let currentTheme = themes.midnight;
 let peerCount = 0;
 let activeTab = 'peers';
-let filterText = '';
-let panelSnapped = false;
 
 const settings = {
-  showAll:        { val:false, label:'📋 Show All Peers',       desc:'Keep all peers. Off = clear on new peer.' },
-  notifications:  { val:true,  label:'🔔 Notifications',        desc:'Browser popup when peer connects.' },
-  soundAlert:     { val:false, label:'🔊 Sound Alert',          desc:'Audio ping on new peer.' },
-  autoScroll:     { val:true,  label:'⬇️ Auto Scroll',          desc:'Scroll to latest peer automatically.' },
-  showCloudflare: { val:false, label:'☁️ Show Cloudflare IPs',  desc:'Show Cloudflare relay addresses.' },
-  showIPv6:       { val:true,  label:'🔵 Show IPv6',            desc:'Include IPv6 peer addresses.' },
-  compactMode:    { val:false, label:'📦 Compact Mode',         desc:'Minimal one-line view per peer.' },
-  showTimestamp:  { val:true,  label:'🕐 Timestamp',            desc:'Show time each peer connected.' },
-  showCoords:     { val:true,  label:'🌐 Coordinates',          desc:'Show lat/lon of peer location.' },
-  showPostal:     { val:true,  label:'📮 Postal Code',          desc:'Show zip/postal code.' },
-  highlightVPN:   { val:true,  label:'🔴 Highlight VPN/DC',    desc:'Flag VPN and datacenter IPs in red.' },
-  showPort:       { val:true,  label:'🔌 Show Port',            desc:'Show port number alongside IP.' },
-  showCandType:   { val:true,  label:'📡 Candidate Type',       desc:'Show srflx/relay/host type.' },
-  autoCopyNew:    { val:false, label:'📎 Auto-Copy New IP',     desc:'Auto copies each new peer IP.' },
-  darkOverlay:    { val:false, label:'🌑 Page Dim Overlay',     desc:'Dims the page behind the panel.' },
-  showRepeat:     { val:true,  label:'🔁 Repeat Peer Alert',    desc:'Flag IPs seen in previous sessions.' },
-  showTor:        { val:true,  label:'🧅 Tor Detection',        desc:'Flag known Tor exit nodes.' },
-  showPrivacy:    { val:true,  label:'🛡️ Privacy/Proxy Score',  desc:'Show ipinfo.io proxy score.' },
-  showDuration:   { val:true,  label:'⏱️ Connection Duration',  desc:'Track how long each peer is connected.' },
-  showTimeline:   { val:true,  label:'📈 Connection Timeline',  desc:'Show visual timeline bar per peer.' },
-  snapToEdge:     { val:false, label:'📌 Snap to Edge',         desc:'Snap panel to right edge of screen.' },
+  showAll:        { val:false, label:'📋 Show All Peers',      desc:'Keep all peers. Off = clear on new peer.' },
+  notifications:  { val:true,  label:'🔔 Notifications',       desc:'Browser popup when peer connects.' },
+  soundAlert:     { val:false, label:'🔊 Sound Alert',         desc:'Audio ping on new peer.' },
+  autoScroll:     { val:true,  label:'⬇️ Auto Scroll',         desc:'Scroll to latest peer automatically.' },
+  showCloudflare: { val:false, label:'☁️ Show Cloudflare IPs', desc:'Show Cloudflare relay addresses.' },
+  showIPv6:       { val:true,  label:'🔵 Show IPv6',           desc:'Include IPv6 peer addresses.' },
+  compactMode:    { val:false, label:'📦 Compact Mode',        desc:'Minimal one-line view per peer.' },
+  showTimestamp:  { val:true,  label:'🕐 Timestamp',           desc:'Show time each peer connected.' },
+  showCoords:     { val:true,  label:'🌐 Coordinates',         desc:'Show lat/lon of peer location.' },
+  showPostal:     { val:true,  label:'📮 Postal Code',         desc:'Show zip/postal code.' },
+  highlightVPN:   { val:true,  label:'🔴 Highlight VPN/DC',   desc:'Flag VPN and datacenter IPs in red.' },
+  showPort:       { val:true,  label:'🔌 Show Port',           desc:'Show port number alongside IP.' },
+  showCandType:   { val:true,  label:'📡 Candidate Type',      desc:'Show srflx/relay/host type.' },
+  autoCopyNew:    { val:false, label:'📎 Auto-Copy New IP',    desc:'Auto copies each new peer IP.' },
+  darkOverlay:    { val:false, label:'🌑 Page Dim Overlay',    desc:'Dims the page behind the panel.' },
+  showRepeat:     { val:true,  label:'🔁 Repeat Peer Alert',   desc:'Flag IPs seen in previous sessions.' },
+  showTor:        { val:true,  label:'🧅 Tor Detection',       desc:'Flag known Tor exit nodes.' },
+  showPrivacy:    { val:true,  label:'🛡️ Privacy/Proxy Score', desc:'Show ipinfo.io proxy score.' },
+  showDuration:   { val:true,  label:'⏱️ Connection Duration', desc:'Track how long each peer is connected.' },
+  showTimeline:   { val:true,  label:'📈 Connection Timeline', desc:'Show visual timeline bar per peer.' },
+  snapToEdge:     { val:false, label:'📌 Snap to Edge',        desc:'Snap panel to right edge of screen.' },
 };
 
 loadCookies();
@@ -112,7 +110,7 @@ styleTag.textContent = `
   .peerEntry { animation:fadeIn 0.2s ease; }
   .liveDot { animation:pulse 1.5s infinite; }
   #ppBody::-webkit-scrollbar,#tabSettings::-webkit-scrollbar,
-  #tabStats::-webkit-scrollbar,#tabMap::-webkit-scrollbar { width:3px; }
+  #tabStats::-webkit-scrollbar { width:3px; }
   #ppBody::-webkit-scrollbar-thumb,#tabSettings::-webkit-scrollbar-thumb,
   #tabStats::-webkit-scrollbar-thumb { background:#333; border-radius:2px; }
   #frostResizeHandle { position:absolute; bottom:0; right:0; width:18px; height:18px;
@@ -123,11 +121,8 @@ styleTag.textContent = `
     border-radius:4px; padding:4px 6px; font-family:inherit; font-size:10px;
     margin-top:5px; resize:none; outline:none; }
   .peerNote:focus { border-color:#7b68ee; }
-  #ppSearchBar { width:100%; background:#0a0818; border:1px solid #2a1a4a;
-    color:#c8b8ff; border-radius:8px; padding:7px 10px; font-family:inherit;
-    font-size:11px; outline:none; box-sizing:border-box; }
-  #ppSearchBar:focus { border-color:#7b68ee; }
-  #ppSearchBar::placeholder { color:#443366; }
+  .leaflet-popup-content-wrapper { background:#0d0d1a!important; border:1px solid #2a1a4a!important; color:#c8b8ff!important; border-radius:8px!important; }
+  .leaflet-popup-tip { background:#0d0d1a!important; }
 `;
 document.head.appendChild(styleTag);
 
@@ -218,6 +213,18 @@ function buildToggleHTML(key) {
     </div>`;
 }
 
+// ---- Build theme selector HTML ----
+function buildThemeHTML() {
+  return `
+    <div style="color:#443366;font-size:clamp(8px,2vw,10px);letter-spacing:2px;margin-bottom:8px;font-weight:600;">THEME</div>
+    <div id="ppThemeBtns" style="display:flex;gap:clamp(3px,1.5vw,5px);flex-wrap:wrap;margin-bottom:16px;">
+      ${Object.entries(themes).map(([key,t])=>`
+        <button class="themeBtn" data-theme="${key}" style="background:${t.header};border:1px solid ${t.border}55;color:${t.text};border-radius:8px;padding:clamp(3px,1vw,5px) clamp(6px,2vw,10px);cursor:pointer;font-size:clamp(9px,2.2vw,11px);font-family:inherit;opacity:${themes[key]===currentTheme?'1':'0.65'};">${t.name}</button>
+      `).join('')}
+    </div>
+  `;
+}
+
 // ---- Panel ----
 const panel = document.createElement('div');
 panel.id = 'peerFloatPanel';
@@ -236,28 +243,18 @@ panel.innerHTML = `
     <div style="display:flex;gap:clamp(3px,1.5vw,5px);align-items:center;">
       <button id="ppCopyAll" style="background:#0d0a1a;border:1px solid #2a1a4a;color:#c8b8ff;cursor:pointer;font-size:clamp(12px,3.5vw,15px);padding:clamp(4px,1.5vw,7px) clamp(5px,2vw,9px);border-radius:8px;">📋</button>
       <button id="ppExportBtn" style="background:#0d0a1a;border:1px solid #2a1a4a;color:#c8b8ff;cursor:pointer;font-size:clamp(12px,3.5vw,15px);padding:clamp(4px,1.5vw,7px) clamp(5px,2vw,9px);border-radius:8px;">💾</button>
-      <button id="ppSnapBtn" title="Snap to edge" style="background:#0d0a1a;border:1px solid #2a1a4a;color:#c8b8ff;cursor:pointer;font-size:clamp(12px,3.5vw,15px);padding:clamp(4px,1.5vw,7px) clamp(5px,2vw,9px);border-radius:8px;">📌</button>
+      <button id="ppSnapBtn" style="background:#0d0a1a;border:1px solid #2a1a4a;color:#c8b8ff;cursor:pointer;font-size:clamp(12px,3.5vw,15px);padding:clamp(4px,1.5vw,7px) clamp(5px,2vw,9px);border-radius:8px;">📌</button>
       <button id="ppClose" style="background:#0d0a1a;border:1px solid #2a1a4a;color:#c8b8ff;cursor:pointer;font-size:clamp(12px,3.5vw,15px);padding:clamp(4px,1.5vw,7px) clamp(5px,2vw,9px);border-radius:8px;">🐉</button>
     </div>
   </div>
 
-  <!-- Themes -->
-  <div id="ppThemes" style="padding:clamp(6px,2vw,8px);background:#080614;border-bottom:1px solid #1a1025;display:flex;gap:clamp(3px,1.5vw,5px);flex-wrap:wrap;flex-shrink:0;">
-    ${Object.entries(themes).map(([key,t])=>`<button class="themeBtn" data-theme="${key}" style="background:${t.header};border:1px solid ${t.border}55;color:${t.text};border-radius:8px;padding:clamp(3px,1vw,5px) clamp(6px,2vw,10px);cursor:pointer;font-size:clamp(9px,2.2vw,11px);font-family:inherit;opacity:0.65;">${t.name}</button>`).join('')}
-  </div>
-
-  <!-- Search -->
-  <div style="padding:6px 10px;background:#080614;border-bottom:1px solid #1a1025;flex-shrink:0;">
-    <input id="ppSearchBar" placeholder="🔍 Filter by IP, city, ISP, country..." />
-  </div>
-
   <!-- Tabs -->
   <div id="ppTabs" style="display:flex;background:#080614;border-bottom:1px solid #1a1025;flex-shrink:0;overflow-x:auto;">
-    <button class="tabBtn" data-tab="peers" style="flex:1;min-width:60px;padding:clamp(7px,2.5vw,10px) 4px;background:linear-gradient(135deg,#0a0520,#120830);border:none;border-bottom:2px solid #7b68ee;color:#c8b8ff;cursor:pointer;font-family:inherit;font-size:clamp(9px,2.5vw,11px);white-space:nowrap;">👥 Peers</button>
-    <button class="tabBtn" data-tab="stats" style="flex:1;min-width:60px;padding:clamp(7px,2.5vw,10px) 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:clamp(9px,2.5vw,11px);white-space:nowrap;">📊 Stats</button>
-    <button class="tabBtn" data-tab="map" style="flex:1;min-width:60px;padding:clamp(7px,2.5vw,10px) 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:clamp(9px,2.5vw,11px);white-space:nowrap;">🗺️ Map</button>
-    <button class="tabBtn" data-tab="settings" style="flex:1;min-width:60px;padding:clamp(7px,2.5vw,10px) 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:clamp(9px,2.5vw,11px);white-space:nowrap;">⚙️ Settings</button>
-    <button class="tabBtn" data-tab="about" style="flex:1;min-width:60px;padding:clamp(7px,2.5vw,10px) 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:clamp(9px,2.5vw,11px);white-space:nowrap;">ℹ️ About</button>
+    <button class="tabBtn" data-tab="peers" style="flex:1;min-width:55px;padding:clamp(7px,2.5vw,10px) 4px;background:linear-gradient(135deg,#0a0520,#120830);border:none;border-bottom:2px solid #7b68ee;color:#c8b8ff;cursor:pointer;font-family:inherit;font-size:clamp(9px,2.5vw,11px);white-space:nowrap;">👥 Peers</button>
+    <button class="tabBtn" data-tab="stats" style="flex:1;min-width:55px;padding:clamp(7px,2.5vw,10px) 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:clamp(9px,2.5vw,11px);white-space:nowrap;">📊 Stats</button>
+    <button class="tabBtn" data-tab="map" style="flex:1;min-width:55px;padding:clamp(7px,2.5vw,10px) 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:clamp(9px,2.5vw,11px);white-space:nowrap;">🗺️ Map</button>
+    <button class="tabBtn" data-tab="settings" style="flex:1;min-width:55px;padding:clamp(7px,2.5vw,10px) 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:clamp(9px,2.5vw,11px);white-space:nowrap;">⚙️ Settings</button>
+    <button class="tabBtn" data-tab="about" style="flex:1;min-width:55px;padding:clamp(7px,2.5vw,10px) 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:clamp(9px,2.5vw,11px);white-space:nowrap;">ℹ️ About</button>
   </div>
 
   <!-- Peers Tab -->
@@ -286,14 +283,15 @@ panel.innerHTML = `
 
   <!-- Map Tab -->
   <div id="tabMap" style="display:none;flex:1;flex-direction:column;min-height:0;">
-    <div id="frostMap" style="flex:1;min-height:260px;background:#080614;"></div>
-    <div id="mapLegend" style="padding:6px 10px;background:#080614;border-top:1px solid #1a1025;font-size:10px;color:#443366;flex-shrink:0;">
+    <div id="frostMap" style="flex:1;min-height:300px;background:#080614;"></div>
+    <div style="padding:6px 10px;background:#080614;border-top:1px solid #1a1025;font-size:10px;color:#443366;flex-shrink:0;">
       🟣 Residential &nbsp; 🔴 VPN/DC &nbsp; 🟡 Hosting &nbsp; 📱 Mobile &nbsp; 🧅 Tor
     </div>
   </div>
 
   <!-- Settings Tab -->
   <div id="tabSettings" style="display:none;overflow-y:auto;padding:clamp(10px,3vw,14px) clamp(12px,3.5vw,16px);flex:1;">
+    ${buildThemeHTML()}
     <div style="color:#443366;font-size:clamp(8px,2vw,10px);letter-spacing:2px;margin-bottom:8px;font-weight:600;">DISPLAY</div>
     ${['showAll','compactMode','showTimestamp','showCoords','showPostal','showPort','showCandType','highlightVPN','darkOverlay','showTimeline'].map(buildToggleHTML).join('')}
     <div style="color:#443366;font-size:clamp(8px,2vw,10px);letter-spacing:2px;margin:14px 0 8px;font-weight:600;">FILTERING</div>
@@ -342,37 +340,75 @@ document.body.appendChild(panel);
 let mapLoaded = false;
 let leafletMap = null;
 const mapMarkers = [];
+let currentMapMarker = null;
 
 function initMap() {
   if (mapLoaded) return;
   mapLoaded = true;
   const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+  link.rel='stylesheet';
+  link.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
   document.head.appendChild(link);
   const script = document.createElement('script');
-  script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  script.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
   script.onload = () => {
     const mapEl = document.getElementById('frostMap');
-    mapEl.style.height = '100%';
-    leafletMap = L.map('frostMap', { zoomControl:true, attributionControl:false }).setView([20,0], 2);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom:19 }).addTo(leafletMap);
-    peerLog.forEach(p => addMapMarker(p));
+    mapEl.style.height='100%';
+    leafletMap = L.map('frostMap',{zoomControl:true,attributionControl:false}).setView([20,0],2);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(leafletMap);
+    // Add any already-logged peers
+    peerLog.forEach(p => addMapMarker(p, false));
+    // Fly to last peer if exists
+    if (peerLog.length > 0) flyToLatestPeer();
   };
   document.head.appendChild(script);
 }
 
-function addMapMarker(p) {
-  if (!leafletMap || !p.loc || p.loc === '?') return;
-  const [lat, lon] = p.loc.split(',').map(Number);
-  if (isNaN(lat) || isNaN(lon)) return;
-  const color = p.type.includes('🔴') ? '#ff4444' : p.type.includes('🧅') ? '#ff8800' : p.type.includes('🟡') ? '#ffaa00' : p.type.includes('📱') ? '#00bfff' : '#7b68ee';
-  const marker = L.circleMarker([lat, lon], {
-    radius:8, fillColor:color, color:'#fff',
-    weight:1.5, opacity:1, fillOpacity:0.85
-  }).addTo(leafletMap);
-  marker.bindPopup(`<div style="font-family:monospace;font-size:11px;min-width:140px;"><b>${p.ip}</b><br>${p.city}, ${p.region}<br>${p.country}<br>${p.org}<br>${p.type}</div>`);
+function getMarkerColor(p) {
+  if (p.type.includes('🧅')) return '#ff8800';
+  if (p.type.includes('🔴')) return '#ff4444';
+  if (p.type.includes('🟡')) return '#ffaa00';
+  if (p.type.includes('📱')) return '#00bfff';
+  return '#7b68ee';
+}
+
+function addMapMarker(p, flyTo = true) {
+  if (!leafletMap || !p.loc || p.loc==='?') return;
+  const [lat,lon] = p.loc.split(',').map(Number);
+  if (isNaN(lat)||isNaN(lon)) return;
+
+  const color = getMarkerColor(p);
+
+  // Pulse ring for current peer
+  const pulseIcon = L.divIcon({
+    className:'',
+    html:`<div style="width:16px;height:16px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 10px ${color},0 0 20px ${color}44;"></div>`,
+    iconSize:[16,16],
+    iconAnchor:[8,8],
+  });
+
+  const marker = L.marker([lat,lon],{icon:pulseIcon}).addTo(leafletMap);
+  marker.bindPopup(`
+    <div style="font-family:monospace;font-size:11px;min-width:160px;line-height:1.6;">
+      <b style="color:#c8b8ff;">${p.ip}</b><br>
+      ${p.city}, ${p.region}<br>
+      ${p.country}<br>
+      <span style="color:#9988cc;">${p.org}</span><br>
+      <span style="color:${color};">${p.type}</span><br>
+      <span style="color:#443366;">🕐 ${p.time}</span>
+    </div>
+  `);
   mapMarkers.push(marker);
+  currentMapMarker = marker;
+
+  if (flyTo) flyToLatestPeer();
+}
+
+function flyToLatestPeer() {
+  if (!leafletMap || !currentMapMarker) return;
+  const latlng = currentMapMarker.getLatLng();
+  leafletMap.flyTo(latlng, 8, { animate:true, duration:1.5 });
+  setTimeout(()=>currentMapMarker.openPopup(), 1600);
 }
 
 // ---- Stats ----
@@ -380,67 +416,43 @@ function updateStats() {
   const el = document.getElementById('statsContent');
   if (!el) return;
   const total = peerLog.length;
-  if (total === 0) { el.innerHTML = '<div style="color:#443366;text-align:center;padding:20px 0;">No data yet.</div>'; return; }
+  if (total===0) { el.innerHTML='<div style="color:#443366;text-align:center;padding:20px 0;">No data yet.</div>'; return; }
 
-  const vpnPct   = Math.round((sessionStats.vpn/total)*100);
-  const resPct   = Math.round((sessionStats.residential/total)*100);
-  const mobPct   = Math.round((sessionStats.mobile/total)*100);
-  const hostPct  = Math.round((sessionStats.hosting/total)*100);
-  const torPct   = Math.round((sessionStats.tor/total)*100);
+  const vpnPct  = Math.round((sessionStats.vpn/total)*100);
+  const resPct  = Math.round((sessionStats.residential/total)*100);
+  const mobPct  = Math.round((sessionStats.mobile/total)*100);
+  const hostPct = Math.round((sessionStats.hosting/total)*100);
+  const torPct  = Math.round((sessionStats.tor/total)*100);
   const topCountries = Object.entries(sessionStats.countries).sort((a,b)=>b[1]-a[1]).slice(0,5);
 
-  function bar(pct, color) {
+  function bar(pct,color) {
     return `<div style="height:6px;background:#111;border-radius:3px;overflow:hidden;margin-top:3px;"><div style="width:${pct}%;height:100%;background:${color};border-radius:3px;transition:width 0.5s;"></div></div>`;
   }
 
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
-      ${[
-        ['Total Peers',total,'#c8b8ff'],
-        ['VPN/DC',sessionStats.vpn,'#ff4444'],
-        ['Residential',sessionStats.residential,'#7b68ee'],
-        ['Mobile',sessionStats.mobile,'#00bfff'],
-        ['Hosting',sessionStats.hosting,'#ffaa00'],
-        ['Tor',sessionStats.tor,'#ff8800'],
-      ].map(([label,val,color])=>`
-        <div style="background:#0a0818;border:1px solid #1a1030;border-radius:8px;padding:10px;">
-          <div style="font-size:10px;color:#443366;">${label}</div>
-          <div style="font-size:20px;font-weight:700;color:${color};margin-top:2px;">${val}</div>
-        </div>
-      `).join('')}
+      ${[['Total Peers',total,'#c8b8ff'],['VPN/DC',sessionStats.vpn,'#ff4444'],['Residential',sessionStats.residential,'#7b68ee'],['Mobile',sessionStats.mobile,'#00bfff'],['Hosting',sessionStats.hosting,'#ffaa00'],['Tor',sessionStats.tor,'#ff8800']]
+        .map(([label,val,color])=>`<div style="background:#0a0818;border:1px solid #1a1030;border-radius:8px;padding:10px;"><div style="font-size:10px;color:#443366;">${label}</div><div style="font-size:20px;font-weight:700;color:${color};margin-top:2px;">${val}</div></div>`).join('')}
     </div>
-
     <div style="background:#0a0818;border:1px solid #1a1030;border-radius:8px;padding:12px;margin-bottom:8px;">
       <div style="font-size:10px;color:#443366;letter-spacing:1px;margin-bottom:8px;">TYPE BREAKDOWN</div>
-      ${[['🔴 VPN/DC',vpnPct,'#ff4444'],['🟢 Residential',resPct,'#7b68ee'],['📱 Mobile',mobPct,'#00bfff'],['🟡 Hosting',hostPct,'#ffaa00'],['🧅 Tor',torPct,'#ff8800']].map(([label,pct,color])=>`
-        <div style="margin-bottom:6px;">
-          <div style="display:flex;justify-content:space-between;font-size:10px;"><span>${label}</span><span style="color:${color};">${pct}%</span></div>
-          ${bar(pct,color)}
-        </div>
-      `).join('')}
+      ${[['🔴 VPN/DC',vpnPct,'#ff4444'],['🟢 Residential',resPct,'#7b68ee'],['📱 Mobile',mobPct,'#00bfff'],['🟡 Hosting',hostPct,'#ffaa00'],['🧅 Tor',torPct,'#ff8800']]
+        .map(([label,pct,color])=>`<div style="margin-bottom:6px;"><div style="display:flex;justify-content:space-between;font-size:10px;"><span>${label}</span><span style="color:${color};">${pct}%</span></div>${bar(pct,color)}</div>`).join('')}
     </div>
-
-    <div style="background:#0a0818;border:1px solid #1a1030;border-radius:8px;padding:12px;">
+    <div style="background:#0a0818;border:1px solid #1a1030;border-radius:8px;padding:12px;margin-bottom:8px;">
       <div style="font-size:10px;color:#443366;letter-spacing:1px;margin-bottom:8px;">TOP COUNTRIES</div>
-      ${topCountries.map(([country,count])=>`
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #161616;font-size:11px;">
-          <span>${country}</span>
-          <span style="color:#7b68ee;font-weight:700;">${count}</span>
-        </div>
-      `).join('')}
+      ${topCountries.map(([country,count])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #161616;font-size:11px;"><span>${country}</span><span style="color:#7b68ee;font-weight:700;">${count}</span></div>`).join('')}
     </div>
-
     <div style="background:#0a0818;border:1px solid #1a1030;border-radius:8px;padding:12px;">
       <div style="font-size:10px;color:#443366;letter-spacing:1px;margin-bottom:8px;">CONNECTION TIMELINE</div>
-      <div id="frostTimeline" style="display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto;">
-        ${peerLog.map((p,i)=>`
+      <div style="display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto;">
+        ${peerLog.map(p=>`
           <div style="display:flex;align-items:center;gap:6px;font-size:10px;">
             <div style="width:8px;height:8px;border-radius:50%;background:${p.type.includes('🔴')?'#ff4444':'#7b68ee'};flex-shrink:0;"></div>
             <span style="color:#443366;">${p.time}</span>
             <span style="color:#c8b8ff;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.ip}</span>
             <span style="color:#443366;">${p.city||'?'}</span>
-          </div>
-        `).join('')}
+          </div>`).join('')}
       </div>
     </div>
   `;
@@ -457,8 +469,8 @@ document.querySelectorAll('.frostToggle').forEach(wrap => {
     const knob = wrap.querySelector('.frostKnob');
     knob.style.left       = on ? '21px' : '3px';
     knob.style.background = on ? '#fff' : '#555';
-    if (key === 'darkOverlay') updateOverlay();
-    if (key === 'snapToEdge') applySnap();
+    if (key==='darkOverlay') updateOverlay();
+    if (key==='snapToEdge') applySnap();
     saveCookies();
   });
 });
@@ -479,7 +491,10 @@ document.querySelectorAll('.tabBtn').forEach(btn => {
     document.getElementById('tabSettings').style.display = activeTab==='settings' ? 'block' : 'none';
     document.getElementById('tabAbout').style.display    = activeTab==='about'    ? 'block' : 'none';
     if (activeTab==='stats') updateStats();
-    if (activeTab==='map') { initMap(); setTimeout(()=>leafletMap&&leafletMap.invalidateSize(),200); }
+    if (activeTab==='map') {
+      initMap();
+      setTimeout(()=>{ if(leafletMap) { leafletMap.invalidateSize(); if(currentMapMarker) flyToLatestPeer(); } },200);
+    }
   });
 });
 
@@ -491,9 +506,8 @@ function applyTheme(t) {
   panel.style.color       = t.text;
   panel.style.background  = t.bg;
   dragon.style.filter     = `drop-shadow(0 0 10px ${t.border})`;
-  document.getElementById('pph').style.background      = `linear-gradient(135deg,${t.header},${t.header}dd)`;
-  document.getElementById('ppThemes').style.background = t.bg;
-  document.getElementById('ppTabs').style.background   = t.bg;
+  document.getElementById('pph').style.background    = `linear-gradient(135deg,${t.header},${t.header}dd)`;
+  document.getElementById('ppTabs').style.background = t.bg;
   document.querySelectorAll('.frostToggle').forEach(w => {
     const on = settings[w.dataset.key].val;
     w.style.background  = on ? t.border : '#1e1e1e';
@@ -510,11 +524,15 @@ function applyTheme(t) {
   });
   saveCookies();
 }
-document.querySelectorAll('.themeBtn').forEach(btn => {
-  btn.addEventListener('click', () => applyTheme(themes[btn.dataset.theme]));
+
+// Theme buttons (delegated since they're inside settings tab)
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('themeBtn') && e.target.dataset.theme) {
+    applyTheme(themes[e.target.dataset.theme]);
+  }
 });
 
-// ---- Snap to edge ----
+// ---- Snap ----
 function applySnap() {
   if (settings.snapToEdge.val) {
     panel.style.transform = 'none';
@@ -544,16 +562,8 @@ document.addEventListener('touchend',()=>dragging=false);
 const resizeHandle = document.getElementById('frostResizeHandle');
 let resizing=false,rox=0,roy=0,rw=0,rh=0;
 resizeHandle.addEventListener('mousedown',e=>{ e.preventDefault();e.stopPropagation();resizing=true;rox=e.clientX;roy=e.clientY;rw=panel.offsetWidth;rh=panel.offsetHeight; });
-document.addEventListener('mousemove',e=>{ if(!resizing)return;const nw=Math.max(280,rw+(e.clientX-rox));const nh=Math.max(300,rh+(e.clientY-roy));panel.style.width=nw+'px';panel.style.maxHeight=nh+'px'; });
+document.addEventListener('mousemove',e=>{ if(!resizing)return;panel.style.width=Math.max(280,rw+(e.clientX-rox))+'px';panel.style.maxHeight=Math.max(300,rh+(e.clientY-roy))+'px'; });
 document.addEventListener('mouseup',()=>resizing=false);
-
-// ---- Search ----
-document.getElementById('ppSearchBar').addEventListener('input', e => {
-  filterText = e.target.value.toLowerCase();
-  document.querySelectorAll('.peerEntry').forEach(el => {
-    el.style.display = el.dataset.searchText?.includes(filterText) ? 'block' : 'none';
-  });
-});
 
 // ---- Open/Close ----
 function closePanel() { panel.style.display='none';dragon.style.display='block';overlay.style.display='none'; }
@@ -593,7 +603,8 @@ document.getElementById('ppClear').addEventListener('click', () => {
   sessionStats={total:0,vpn:0,residential:0,mobile:0,hosting:0,tor:0,countries:{}};
   document.getElementById('ppCount').textContent='Peers: 0';
   mapMarkers.forEach(m=>leafletMap&&leafletMap.removeLayer(m));
-  mapMarkers.length=0;
+  mapMarkers.length=0;currentMapMarker=null;
+  if (leafletMap) leafletMap.setView([20,0],2);
 });
 
 document.getElementById('ppClearHistory').addEventListener('click', () => {
@@ -611,26 +622,25 @@ function addToPanel(p) {
 
   const seenCount = getSeenCount(p.ip);
   const isTor     = torExits.has(p.ip);
-  const vpnColor  = settings.highlightVPN.val && (p.type.includes('🔴')||isTor) ? '#ff4444' : currentTheme.text;
+  const vpnColor  = settings.highlightVPN.val&&(p.type.includes('🔴')||isTor) ? '#ff4444' : currentTheme.text;
 
   const entry = document.createElement('div');
   entry.className = 'peerEntry';
-  entry.dataset.searchText = `${p.ip} ${p.city} ${p.region} ${p.country} ${p.org} ${p.type}`.toLowerCase();
   entry.style.cssText = `border:1px solid ${currentTheme.dim}44;border-radius:clamp(8px,2.5vw,12px);padding:clamp(8px,2.5vw,12px);margin-bottom:clamp(6px,2vw,9px);background:${currentTheme.header}88;`;
 
-  const badges = [];
-  if (isTor && settings.showTor.val) badges.push(`<span style="background:#ff880022;border:1px solid #ff8800;color:#ff8800;border-radius:4px;padding:1px 5px;font-size:9px;">🧅 TOR</span>`);
-  if (seenCount>0 && settings.showRepeat.val) badges.push(`<span style="background:#ffaa0022;border:1px solid #ffaa00;color:#ffaa00;border-radius:4px;padding:1px 5px;font-size:9px;">🔁 SEEN ${seenCount}x</span>`);
-  if (p.privacyScore && settings.showPrivacy.val) badges.push(`<span style="background:#ff222222;border:1px solid #ff2222;color:#ff6666;border-radius:4px;padding:1px 5px;font-size:9px;">🛡️ PROXY</span>`);
+  const badges=[];
+  if (isTor&&settings.showTor.val) badges.push(`<span style="background:#ff880022;border:1px solid #ff8800;color:#ff8800;border-radius:4px;padding:1px 5px;font-size:9px;">🧅 TOR</span>`);
+  if (seenCount>0&&settings.showRepeat.val) badges.push(`<span style="background:#ffaa0022;border:1px solid #ffaa00;color:#ffaa00;border-radius:4px;padding:1px 5px;font-size:9px;">🔁 SEEN ${seenCount}x</span>`);
+  if (p.privacyScore&&settings.showPrivacy.val) badges.push(`<span style="background:#ff222222;border:1px solid #ff2222;color:#ff6666;border-radius:4px;padding:1px 5px;font-size:9px;">🛡️ PROXY</span>`);
 
-  let html = `
+  let html=`
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px;">
       <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;flex-wrap:wrap;">
         ${p.flag?`<img src="${p.flag}" style="width:16px;height:12px;border-radius:2px;flex-shrink:0;">`:''}
-        <b style="color:${currentTheme.text};font-size:clamp(10px,2.8vw,12px);word-break:break-all;">${p.label} ${p.ip}${settings.showPort.val&&p.port?`<span style="color:${currentTheme.dim};font-size:clamp(9px,2.2vw,10px);">:${p.port}</span>`:''}</b>
+        <b style="color:${currentTheme.text};font-size:clamp(10px,2.8vw,12px);word-break:break-all;">${p.label} ${p.ip}${settings.showPort.val&&p.port?`<span style="color:${currentTheme.dim};font-size:10px;">:${p.port}</span>`:''}</b>
       </div>
       <button onclick="navigator.clipboard.writeText('${p.ip}').then(()=>this.textContent='✅');setTimeout(()=>this.textContent='📋',1500)"
-        style="background:${currentTheme.header};border:1px solid ${currentTheme.dim}44;color:${currentTheme.dim};cursor:pointer;font-size:clamp(9px,2.5vw,11px);border-radius:6px;padding:clamp(2px,1vw,4px) clamp(5px,2vw,8px);flex-shrink:0;margin-left:6px;">📋</button>
+        style="background:${currentTheme.header};border:1px solid ${currentTheme.dim}44;color:${currentTheme.dim};cursor:pointer;font-size:11px;border-radius:6px;padding:3px 7px;flex-shrink:0;margin-left:6px;">📋</button>
     </div>
     ${badges.length?`<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px;">${badges.join('')}</div>`:''}
     <div style="color:${vpnColor};font-size:clamp(10px,2.5vw,11px);margin-bottom:4px;">
@@ -646,48 +656,36 @@ function addToPanel(p) {
     if (settings.showPostal.val)    extras.push(`📮 ${p.postal}`);
     if (settings.showTimestamp.val) extras.push(`🕐 ${p.time}`);
     if (extras.length) html+=`<div style="color:${currentTheme.dim};font-size:clamp(9px,2.2vw,10px);margin-top:5px;line-height:1.6;">${extras.join(' • ')}</div>`;
-
-    if (settings.showDuration.val) {
-      html+=`<div id="dur_${p.ip.replace(/[:.]/g,'_')}" style="color:${currentTheme.dim};font-size:10px;margin-top:3px;">⏱️ Connected: 0s <span class="liveDot" style="color:#00ff88;">●</span></div>`;
-    }
-
-    if (settings.showTimeline.val) {
-      html+=`<div style="height:3px;background:#111;border-radius:2px;margin-top:6px;overflow:hidden;"><div id="tl_${p.ip.replace(/[:.]/g,'_')}" style="height:100%;width:0%;background:${currentTheme.border};border-radius:2px;transition:width 0.5s;"></div></div>`;
-    }
-
+    if (settings.showDuration.val) html+=`<div id="dur_${p.ip.replace(/[:.]/g,'_')}" style="color:${currentTheme.dim};font-size:10px;margin-top:3px;">⏱️ Connected: 0s <span class="liveDot" style="color:${currentTheme.border};">●</span></div>`;
+    if (settings.showTimeline.val) html+=`<div style="height:3px;background:#111;border-radius:2px;margin-top:6px;overflow:hidden;"><div id="tl_${p.ip.replace(/[:.]/g,'_')}" style="height:100%;width:0%;background:${currentTheme.border};border-radius:2px;transition:width 0.5s;"></div></div>`;
     html+=`<textarea class="peerNote" placeholder="Add a note about this peer..." rows="1" onfocus="this.rows=3" onblur="this.rows=1"></textarea>`;
   } else {
     html+=`<div style="color:${currentTheme.sub};font-size:clamp(9px,2.2vw,11px);">📍 ${p.city}, ${p.country} • 🏢 ${p.org}</div>`;
   }
 
-  entry.innerHTML = html;
+  entry.innerHTML=html;
   body.appendChild(entry);
   if (settings.autoScroll.val) body.scrollTop=body.scrollHeight;
   peerCount++;
   document.getElementById('ppCount').textContent=`Peers: ${peerCount}`;
 
-  // Duration timer
   if (settings.showDuration.val) {
-    const startTime = Date.now();
-    const durId = `dur_${p.ip.replace(/[:.]/g,'_')}`;
-    const tlId  = `tl_${p.ip.replace(/[:.]/g,'_')}`;
-    const timer = setInterval(()=>{
-      const el = document.getElementById(durId);
-      const tl = document.getElementById(tlId);
-      if (!el) { clearInterval(timer); return; }
-      const secs = Math.floor((Date.now()-startTime)/1000);
-      const mins = Math.floor(secs/60);
-      const s = secs%60;
-      el.innerHTML=`⏱️ Connected: ${mins>0?mins+'m ':''}${s}s <span class="liveDot" style="color:#00ff88;">●</span>`;
-      if (tl) tl.style.width = Math.min(100, (secs/300)*100)+'%';
-      activePeers.set(p.ip, { timer, startTime });
+    const startTime=Date.now();
+    const durId=`dur_${p.ip.replace(/[:.]/g,'_')}`;
+    const tlId=`tl_${p.ip.replace(/[:.]/g,'_')}`;
+    const timer=setInterval(()=>{
+      const el=document.getElementById(durId);
+      const tl=document.getElementById(tlId);
+      if (!el){clearInterval(timer);return;}
+      const secs=Math.floor((Date.now()-startTime)/1000);
+      const mins=Math.floor(secs/60);
+      el.innerHTML=`⏱️ Connected: ${mins>0?mins+'m ':''}${secs%60}s <span class="liveDot" style="color:${currentTheme.border};">●</span>`;
+      if (tl) tl.style.width=Math.min(100,(secs/300)*100)+'%';
     },1000);
-    activePeers.set(p.ip, { timer, startTime });
+    activePeers.set(p.ip,{timer,startTime});
   }
 
-  // Map marker
-  addMapMarker(p);
-  // Stats update
+  addMapMarker(p, true);
   if (activeTab==='stats') updateStats();
 }
 
@@ -709,28 +707,25 @@ function classifyASN(org) {
 
 // ---- Geo ----
 async function geoIP(ip, port, candType) {
-  if (!settings.showCloudflare.val && isCloudflare(ip)) return;
-  if (!settings.showIPv6.val && isIPv6(ip)) return;
+  if (!settings.showCloudflare.val&&isCloudflare(ip)) return;
+  if (!settings.showIPv6.val&&isIPv6(ip)) return;
   try {
-    const r = await fetch(`https://ipinfo.io/${ip}/json`);
-    const d = await r.json();
-    const isTor = torExits.has(ip);
-    const typeRaw = classifyASN(d.org);
-    const privacyScore = d.privacy?.proxy || d.privacy?.vpn || false;
-
-    const p = {
-      ip, port:port||'?', candType:candType||'?',
-      label: isIPv6(ip)?'🔵 IPv6':'🟣 IPv4',
-      type: isTor?'🧅 Tor':typeRaw,
-      city:d.city||'?', region:d.region||'?',
-      country:d.country||'?', org:d.org||'Unknown',
-      loc:d.loc||'?', postal:d.postal||'?',
+    const r=await fetch(`https://ipinfo.io/${ip}/json`);
+    const d=await r.json();
+    const isTor=torExits.has(ip);
+    const typeRaw=classifyASN(d.org);
+    const privacyScore=d.privacy?.proxy||d.privacy?.vpn||false;
+    const p={
+      ip,port:port||'?',candType:candType||'?',
+      label:isIPv6(ip)?'🔵 IPv6':'🟣 IPv4',
+      type:isTor?'🧅 Tor':typeRaw,
+      city:d.city||'?',region:d.region||'?',
+      country:d.country||'?',org:d.org||'Unknown',
+      loc:d.loc||'?',postal:d.postal||'?',
       flag:d.country?`https://flagcdn.com/16x12/${d.country.toLowerCase()}.png`:'',
       time:new Date().toLocaleTimeString(),
-      privacyScore, duration:null
+      privacyScore,duration:null
     };
-
-    // Session stats
     sessionStats.total++;
     if (isTor) sessionStats.tor++;
     else if (typeRaw.includes('VPN')) sessionStats.vpn++;
@@ -738,11 +733,9 @@ async function geoIP(ip, port, candType) {
     else if (typeRaw.includes('Mobile')) sessionStats.mobile++;
     else sessionStats.residential++;
     if (p.country!=='?') sessionStats.countries[p.country]=(sessionStats.countries[p.country]||0)+1;
-
     peerLog.push(p);
     saveHistory(ip);
     addToPanel(p);
-
     if (settings.autoCopyNew.val) navigator.clipboard.writeText(ip).catch(()=>{});
     if (settings.soundAlert.val) playPing();
     if (settings.notifications.val) {
@@ -755,9 +748,9 @@ async function geoIP(ip, port, candType) {
 
 // ---- Hook ----
 window.RTCPeerConnection = function(...args) {
-  const pc = new origPC(...args);
+  const pc=new origPC(...args);
   setInterval(async()=>{
-    const stats = await pc.getStats();
+    const stats=await pc.getStats();
     stats.forEach(r=>{
       if (r.type==='remote-candidate'&&r.address&&!seenIPs.has(r.address)) {
         seenIPs.add(r.address);
