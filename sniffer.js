@@ -31,6 +31,7 @@ let netConnections = new Map();
 let protocolCounts = { TCP:0, UDP:0, STUN:0, WebRTC:0, DNS:0, HTTPS:0, Other:0 };
 let webrtcStats = { state:'N/A', localCand:'N/A', remoteCand:'N/A', rtt:'N/A', jitter:'N/A', bytesSent:0, bytesReceived:0 };
 let activePC = null;
+let disablePaymentPopups = false;
 
 // ---- ASN Database ----
 const VPN_PROVIDERS = {
@@ -165,6 +166,7 @@ function saveCookies() {
   data.theme = Object.keys(themes).find(k => themes[k] === currentTheme) || 'midnight';
   data.targetCountry = targetCountry;
   data.autoSkip = autoSkipEnabled;
+  data.disablePaymentPopups = disablePaymentPopups;
   document.cookie = `frostSettings=${encodeURIComponent(JSON.stringify(data))};max-age=31536000;path=/`;
 }
 function loadCookies() {
@@ -176,6 +178,7 @@ function loadCookies() {
     if (data.theme && themes[data.theme]) currentTheme = themes[data.theme];
     if (data.targetCountry) targetCountry = data.targetCountry;
     if (data.autoSkip !== undefined) autoSkipEnabled = data.autoSkip;
+    if (data.disablePaymentPopups !== undefined) disablePaymentPopups = data.disablePaymentPopups;
   } catch(e) {}
 }
 function getHistory() { try { return JSON.parse(localStorage.getItem('frostPeerHistory')||'{}'); } catch(e){return{};} }
@@ -186,6 +189,81 @@ function saveCollection(items) { try { localStorage.setItem('frostCollection',JS
 function addToCollection(ip, data) {
   const col = getCollection();
   if (!col.find(c=>c.ip===ip)) { col.push({ip,...data,saved:new Date().toLocaleString()}); saveCollection(col); }
+}
+
+// ---- Payment Popup Blocker ----
+function initPaymentPopupBlocker() {
+  if (!disablePaymentPopups) return;
+  
+  // Watch for new elements being added to the DOM
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === 1) { // Element node
+          // Check if this is a payment popup or contains one
+          if (node.id && (node.id.includes('payment') || node.id.includes('pay') || node.id.includes('modal'))) {
+            node.style.display = 'none';
+            node.remove();
+          }
+          // Check for payment popup classes
+          if (node.className && typeof node.className === 'string') {
+            const classes = node.className.split(' ');
+            if (classes.some(c => c.includes('payment') || c.includes('pay') || c.includes('modal') || c.includes('popup'))) {
+              node.style.display = 'none';
+              node.remove();
+            }
+          }
+          // Check for payment button clicks
+          if (node.tagName === 'BUTTON' && node.textContent && 
+              (node.textContent.toLowerCase().includes('pay') || 
+               node.textContent.toLowerCase().includes('buy') || 
+               node.textContent.toLowerCase().includes('purchase') ||
+               node.textContent.toLowerCase().includes('upgrade'))) {
+            node.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              return false;
+            });
+          }
+        }
+      });
+    });
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  // Also block existing payment elements
+  document.querySelectorAll('*').forEach(el => {
+    if (el.id && (el.id.includes('payment') || el.id.includes('pay') || el.id.includes('modal'))) {
+      el.style.display = 'none';
+      el.remove();
+    }
+    if (el.className && typeof el.className === 'string') {
+      const classes = el.className.split(' ');
+      if (classes.some(c => c.includes('payment') || c.includes('pay') || c.includes('modal') || c.includes('popup'))) {
+        el.style.display = 'none';
+        el.remove();
+      }
+    }
+  });
+
+  // Block payment-related event listeners
+  document.addEventListener('click', (e) => {
+    const target = e.target;
+    if (target.tagName === 'BUTTON' && target.textContent) {
+      const text = target.textContent.toLowerCase();
+      if (text.includes('pay') || text.includes('buy') || text.includes('purchase') || text.includes('upgrade')) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+    }
+  }, true);
+
+  logEvent('success', '💳 Payment popups blocked');
 }
 
 // ---- Tor ----
@@ -406,6 +484,19 @@ function buildCountryTargetHTML(){
   </div>`;
 }
 
+function buildPaymentPopupHTML(){
+  return `<div style="font-size:10px;color:#443366;letter-spacing:2px;margin-bottom:10px;font-weight:600;">💳 PAYMENT POPUPS</div>
+  <div style="background:#0a0818;border:1px solid #2a1a4a;border-radius:10px;padding:12px;margin-bottom:14px;">
+    <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+      <div id="paymentPopupToggle" style="width:44px;height:24px;border-radius:12px;flex-shrink:0;background:${disablePaymentPopups?currentTheme.border:'#1e1e1e'};border:1px solid ${disablePaymentPopups?currentTheme.border:'#333'};position:relative;cursor:pointer;">
+        <div class="frostKnob" style="position:absolute;top:3px;left:${disablePaymentPopups?'21px':'3px'};width:16px;height:16px;border-radius:50%;background:${disablePaymentPopups?'#fff':'#555'};"></div>
+      </div>
+      <span style="font-size:11px;color:#9988cc;">Disable payment popups</span>
+    </div>
+    <div style="margin-top:8px;font-size:10px;color:#443366;line-height:1.5;">Blocks all payment, upgrade, and purchase popups on the site.</div>
+  </div>`;
+}
+
 function buildCollectionHTML(){
   const col=getCollection();
   return `<div style="font-size:10px;color:#443366;letter-spacing:2px;margin-bottom:10px;font-weight:600;">📦 SAVED COLLECTION</div>
@@ -453,10 +544,9 @@ panel.innerHTML=`
 
   <div id="ppTabs" style="display:flex;background:#080614;border-bottom:1px solid #1a1025;flex-shrink:0;overflow-x:auto;-webkit-overflow-scrolling:touch;">
     <button class="tabBtn" data-tab="peers" style="flex:1;min-width:52px;padding:9px 4px;background:linear-gradient(135deg,#0a0520,#120830);border:none;border-bottom:2px solid #7b68ee;color:#c8b8ff;cursor:pointer;font-family:inherit;font-size:10px;white-space:nowrap;">👥<br>Peers</button>
-    <button class="tabBtn" data-tab="intel" style="flex:1;min-width:52px;padding:9px 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:10px;white-space:nowrap;">🔍<br>Intel</button>
+    <button class="tabBtn" data-tab="map" style="flex:1;min-width:52px;padding:9px 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:10px;white-space:nowrap;">🗺️<br>Map</button>
     <button class="tabBtn" data-tab="network" style="flex:1;min-width:52px;padding:9px 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:10px;white-space:nowrap;">📡<br>Net</button>
     <button class="tabBtn" data-tab="stats" style="flex:1;min-width:52px;padding:9px 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:10px;white-space:nowrap;">📊<br>Stats</button>
-    <button class="tabBtn" data-tab="map" style="flex:1;min-width:52px;padding:9px 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:10px;white-space:nowrap;">🗺️<br>Map</button>
     <button class="tabBtn" data-tab="events" style="flex:1;min-width:52px;padding:9px 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:10px;white-space:nowrap;">📋<br>Events</button>
     <button class="tabBtn" data-tab="collection" style="flex:1;min-width:52px;padding:9px 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:10px;white-space:nowrap;">📦<br>Saved</button>
     <button class="tabBtn" data-tab="settings" style="flex:1;min-width:52px;padding:9px 4px;background:none;border:none;border-bottom:2px solid transparent;color:#443366;cursor:pointer;font-family:inherit;font-size:10px;white-space:nowrap;">⚙️<br>Settings</button>
@@ -484,12 +574,10 @@ panel.innerHTML=`
     </div>
   </div>
 
-  <!-- Intel Tab (NEW) -->
-  <div id="tabIntel" style="display:none;overflow-y:auto;padding:8px;flex:1;">
-    <div style="font-size:10px;color:#443366;letter-spacing:1px;margin-bottom:8px;font-weight:600;">🔍 ASN INTELLIGENCE</div>
-    <div id="asnRiskList"><div style="color:#443366;text-align:center;padding:20px 0;font-size:11px;">No peers yet — ASN data appears here.</div></div>
-    <div style="font-size:10px;color:#443366;letter-spacing:1px;margin:12px 0 8px;font-weight:600;">🕸️ SUBNET CLUSTERS (/24)</div>
-    <div id="subnetList"><div style="color:#443366;text-align:center;padding:12px 0;font-size:11px;">No subnet clusters detected.</div></div>
+  <!-- Map Tab -->
+  <div id="tabMap" style="display:none;flex:1;flex-direction:column;min-height:0;">
+    <div id="frostMap" style="flex:1;min-height:280px;background:#080614;"></div>
+    <div style="padding:6px 10px;background:#080614;border-top:1px solid #1a1025;font-size:10px;color:#443366;flex-shrink:0;">🟣 Residential &nbsp;🔴 VPN/DC &nbsp;🟡 Hosting &nbsp;📱 Mobile &nbsp;🧅 Tor</div>
   </div>
 
   <!-- Network Tab -->
@@ -506,12 +594,6 @@ panel.innerHTML=`
   <!-- Stats Tab -->
   <div id="tabStats" style="display:none;overflow-y:auto;padding:8px;flex:1;">
     <div id="statsContent"><div style="color:#443366;text-align:center;padding:20px 0;">No data yet.</div></div>
-  </div>
-
-  <!-- Map Tab -->
-  <div id="tabMap" style="display:none;flex:1;flex-direction:column;min-height:0;">
-    <div id="frostMap" style="flex:1;min-height:280px;background:#080614;"></div>
-    <div style="padding:6px 10px;background:#080614;border-top:1px solid #1a1025;font-size:10px;color:#443366;flex-shrink:0;">🟣 Residential &nbsp;🔴 VPN/DC &nbsp;🟡 Hosting &nbsp;📱 Mobile &nbsp;🧅 Tor</div>
   </div>
 
   <!-- Events Tab -->
@@ -532,6 +614,7 @@ panel.innerHTML=`
   <div id="tabSettings" style="display:none;overflow-y:auto;padding:12px 14px;flex:1;">
     ${buildThemeHTML()}
     ${buildCountryTargetHTML()}
+    ${buildPaymentPopupHTML()}
     <div style="font-size:10px;color:#443366;letter-spacing:2px;margin-bottom:8px;font-weight:600;">DISPLAY</div>
     ${['showAll','compactMode','showTimestamp','showCoords','showPostal','showPort','showCandType','highlightVPN','darkOverlay','showTimeline'].map(buildToggleHTML).join('')}
     <div style="font-size:10px;color:#443366;letter-spacing:2px;margin:14px 0 8px;font-weight:600;">FILTERING</div>
@@ -575,65 +658,6 @@ panel.innerHTML=`
   <div id="frostResizeHandle">⊿</div>
 `;
 document.body.appendChild(panel);
-
-// ---- Intel Tab updater ----
-function updateIntelTab() {
-  const t = currentTheme;
-
-  // ASN Risk List
-  const asnEl = document.getElementById('asnRiskList');
-  if (asnEl) {
-    if (peerLog.length === 0) {
-      asnEl.innerHTML = '<div style="color:#443366;text-align:center;padding:20px 0;font-size:11px;">No peers yet.</div>';
-    } else {
-      asnEl.innerHTML = peerLog.map(p => {
-        const asn = lookupASN(p.org);
-        const { score } = scoreConnection(p, asn);
-        const riskColor = asn ? getRiskColor(asn.risk) : '#888';
-        return `
-          <div style="border:1px solid ${riskColor}44;border-left:3px solid ${riskColor};border-radius:8px;padding:8px 10px;margin-bottom:6px;background:${t.header}88;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-              <div style="display:flex;align-items:center;gap:6px;">
-                ${p.flag?`<img src="${p.flag}" style="width:14px;height:10px;border-radius:2px;">`:''}
-                <b style="color:${t.text};font-size:11px;">${p.ip}</b>
-              </div>
-              <div style="display:flex;align-items:center;gap:6px;">
-                <span class="quality-stars" style="color:${riskColor};">${renderStars(score)}</span>
-                <span style="font-size:10px;color:${riskColor};">${score}/5</span>
-              </div>
-            </div>
-            ${asn ? `
-              <div class="asn-badge" style="background:${riskColor}22;border-color:${riskColor}44;color:${riskColor};">
-                🏢 ${asn.name} • ${asn.label} • Risk: ${asn.risk}/10
-              </div>
-            ` : `<div style="font-size:10px;color:${t.dim};">🏢 ${p.org||'Unknown'}</div>`}
-            <div style="font-size:10px;color:${t.dim};margin-top:4px;">${getRiskLabel(asn?.risk||0)} • ${p.city}, ${p.country} • ${p.time}</div>
-          </div>
-        `;
-      }).join('');
-    }
-  }
-
-  // Subnet clusters
-  const subnetEl = document.getElementById('subnetList');
-  if (subnetEl) {
-    const clusters = [...subnetMap.values()].filter(s => s.ips.length > 1).sort((a,b) => b.ips.length - a.ips.length);
-    if (clusters.length === 0) {
-      subnetEl.innerHTML = '<div style="color:#443366;text-align:center;padding:12px 0;font-size:11px;">No clusters detected yet.</div>';
-    } else {
-      subnetEl.innerHTML = clusters.map(c => `
-        <div class="subnet-cluster frost-subnet-alert" style="background:${t.header};border-color:#ffaa0044;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-            <b style="color:#ffaa00;font-size:11px;">🕸️ ${c.subnet}</b>
-            <span style="background:#ffaa0022;border:1px solid #ffaa0044;color:#ffaa00;border-radius:4px;padding:1px 6px;font-size:9px;">${c.ips.length} IPs</span>
-          </div>
-          <div style="font-size:10px;color:${t.dim};margin-bottom:4px;">First seen: ${c.firstSeen}</div>
-          ${c.ips.map(ip=>`<div style="font-size:10px;color:${t.sub};padding:2px 0;">• ${ip.ip} — ${ip.city||'?'}, ${ip.country||'?'} @ ${ip.time}</div>`).join('')}
-        </div>
-      `).join('');
-    }
-  }
-}
 
 // ---- Net content updater ----
 function updateNetContent() {
@@ -748,13 +772,12 @@ document.querySelectorAll('.tabBtn').forEach(btn=>{
       const a=b.dataset.tab===activeTab;
       b.style.background=a?currentTheme.header:'none';b.style.color=a?currentTheme.text:currentTheme.dim;b.style.borderBottom=a?`2px solid ${currentTheme.border}`:'2px solid transparent';
     });
-    ['Peers','Intel','Network','Stats','Map','Events','Collection','Settings','About'].forEach(n=>{
+    ['Peers','Map','Network','Stats','Events','Collection','Settings','About'].forEach(n=>{
       const el=document.getElementById(`tab${n}`);if(el)el.style.display='none';
     });
     const tabEl=document.getElementById(`tab${activeTab.charAt(0).toUpperCase()+activeTab.slice(1)}`);
-    if(tabEl)tabEl.style.display=['peers','network'].includes(activeTab)?'flex':'block';
+    if(tabEl)tabEl.style.display=['peers','network','map'].includes(activeTab)?'flex':'block';
     if(activeTab==='stats')updateStats();
-    if(activeTab==='intel')updateIntelTab();
     if(activeTab==='map'){initMap();setTimeout(()=>{if(leafletMap){leafletMap.invalidateSize();if(currentMapMarker)flyToLatest();}},200);}
     if(activeTab==='network')updateNetContent();
     if(activeTab==='events')updateEventLog();
@@ -779,6 +802,18 @@ document.addEventListener('click',e=>{
     if(tog){tog.style.background=autoSkipEnabled?currentTheme.border:'#1e1e1e';tog.querySelector('.frostKnob').style.left=autoSkipEnabled?'21px':'3px';}
     saveCookies();
   }
+  if(e.target.id==='paymentPopupToggle'||e.target.closest('#paymentPopupToggle')){
+    disablePaymentPopups=!disablePaymentPopups;
+    const tog=document.getElementById('paymentPopupToggle');
+    if(tog){tog.style.background=disablePaymentPopups?currentTheme.border:'#1e1e1e';tog.querySelector('.frostKnob').style.left=disablePaymentPopups?'21px':'3px';}
+    if(disablePaymentPopups){
+      initPaymentPopupBlocker();
+      logEvent('success', '💳 Payment popup blocking enabled');
+    } else {
+      logEvent('info', '💳 Payment popup blocking disabled');
+    }
+    saveCookies();
+  }
 });
 
 // Country select
@@ -791,7 +826,7 @@ document.getElementById('targetCountrySelect')?.addEventListener('change',e=>{
 
 // ---- Toggles ----
 document.querySelectorAll('.frostToggle').forEach(wrap=>{
-  if(wrap.id==='autoSkipToggle')return;
+  if(wrap.id==='autoSkipToggle' || wrap.id==='paymentPopupToggle')return;
   wrap.addEventListener('click',()=>{
     const key=wrap.dataset.key;if(!key||!settings[key])return;
     settings[key].val=!settings[key].val;
@@ -843,8 +878,22 @@ function setupMap(){
   const el=document.getElementById('frostMap');el.style.height='100%';
   leafletMap=L.map('frostMap',{zoomControl:true,attributionControl:false}).setView([20,0],2);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(leafletMap);
-  peerLog.forEach(p=>addMapMarker(p,false));
-  if(peerLog.length>0)flyToLatest();
+  // Add all existing peers to the map
+  peerLog.forEach(p => addMapMarker(p, false));
+  if(peerLog.length > 0) {
+    // Fly to the most recent peer
+    const lastPeer = peerLog[peerLog.length - 1];
+    if(lastPeer && lastPeer.loc && lastPeer.loc !== '?') {
+      const [lat, lon] = lastPeer.loc.split(',').map(Number);
+      if(!isNaN(lat) && !isNaN(lon)) {
+        leafletMap.setView([lat, lon], 8);
+        // Open popup for the last marker
+        setTimeout(() => {
+          if(currentMapMarker) currentMapMarker.openPopup();
+        }, 500);
+      }
+    }
+  }
 }
 function addMapMarker(p,fly=true){
   if(!leafletMap||!p.loc||p.loc==='?')return;
@@ -852,8 +901,19 @@ function addMapMarker(p,fly=true){
   const color=getMarkerColor(p);
   const icon=L.divIcon({className:'',html:`<div style="width:16px;height:16px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 10px ${color};"></div>`,iconSize:[16,16],iconAnchor:[8,8]});
   const m=L.marker([lat,lon],{icon}).addTo(leafletMap);
-  m.bindPopup(`<div style="font-family:monospace;font-size:11px;min-width:160px;line-height:1.6;"><b style="color:#c8b8ff;">${p.ip}</b><br>${p.city}, ${p.region}<br>${p.country}<br><span style="color:#9988cc;">${p.org}</span><br><span style="color:${color};">${p.type}</span></div>`);
-  mapMarkers.push(m);currentMapMarker=m;if(fly)flyToLatest();
+  m.bindPopup(`<div style="font-family:monospace;font-size:11px;min-width:160px;line-height:1.6;">
+    <b style="color:#c8b8ff;">${p.ip}</b><br>
+    ${p.city}, ${p.region}<br>
+    ${p.country}<br>
+    <span style="color:#9988cc;">${p.org}</span><br>
+    <span style="color:${color};">${p.type}</span>
+    ${p.port && p.port !== '?' ? `<br>🔌 Port: ${p.port}` : ''}
+    ${p.candType && p.candType !== '?' ? `<br>📡 ${p.candType}` : ''}
+    ${p.time ? `<br>🕐 ${p.time}` : ''}
+  </div>`);
+  mapMarkers.push(m);
+  currentMapMarker=m;
+  if(fly)flyToLatest();
 }
 function flyToLatest(){
   if(!leafletMap||!currentMapMarker)return;
@@ -1009,9 +1069,11 @@ function addToPanel(p) {
     },1000);
     activePeers.set(p.ip,{timer,startTime});
   }
-  addMapMarker(p,true);
+  // Add marker to map if map is loaded
+  if(leafletMap) {
+    addMapMarker(p, true);
+  }
   if(activeTab==='stats')updateStats();
-  if(activeTab==='intel')updateIntelTab();
 }
 
 // ---- WebRTC Stats Polling ----
@@ -1036,7 +1098,7 @@ function applyTheme(t){
   dragon.style.filter=`drop-shadow(0 0 10px ${t.border})`;
   document.getElementById('pph').style.background=t.gradient;
   document.getElementById('ppTabs').style.background=t.bg;
-  document.querySelectorAll('.frostToggle').forEach(w=>{if(w.id==='autoSkipToggle')return;const key=w.dataset.key;if(!key||!settings[key])return;const on=settings[key].val;w.style.background=on?t.border:'#1e1e1e';w.style.borderColor=on?t.border:'#333';});
+  document.querySelectorAll('.frostToggle').forEach(w=>{if(w.id==='autoSkipToggle'||w.id==='paymentPopupToggle')return;const key=w.dataset.key;if(!key||!settings[key])return;const on=settings[key].val;w.style.background=on?t.border:'#1e1e1e';w.style.borderColor=on?t.border:'#333';});
   document.querySelectorAll('.tabBtn').forEach(b=>{const a=b.dataset.tab===activeTab;b.style.color=a?t.text:t.dim;b.style.borderBottom=a?`2px solid ${t.border}`:'2px solid transparent';b.style.background=a?t.header:'none';});
   document.querySelectorAll('.themeBtn').forEach(b=>{const active=themes[b.dataset.theme]===t;b.style.opacity=active?'1':'0.65';b.style.border=`1px solid ${themes[b.dataset.theme].border}${active?'':'55'}`;b.style.boxShadow=active?`0 0 12px ${themes[b.dataset.theme].border}44`:'';});
   document.querySelectorAll('.netSubBtn').forEach(b=>{const a=b.dataset.net===activeNetSubTab;b.style.color=a?t.text:t.dim;b.style.borderBottom=a?`2px solid ${t.border}`:'2px solid transparent';b.style.background=a?t.header:'none';});
@@ -1288,6 +1350,11 @@ window.RTCPeerConnection=function(...args){
   },2000);
   return pc;
 };
+
+// Initialize payment popup blocker if enabled
+if(disablePaymentPopups){
+  initPaymentPopupBlocker();
+}
 
 applyTheme(currentTheme);
 if(settings.snapToEdge.val)applySnap();
