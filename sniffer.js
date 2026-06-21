@@ -1,5 +1,5 @@
 // ============================================================
-//  🐉 Frosts Tools v0.2.1 — ASN Intelligence Update
+//  🐉 Frosts Tools v0.2.2 — ASN Intelligence Update
 // ============================================================
 
 const origPC = window.RTCPeerConnection;
@@ -416,7 +416,7 @@ loader.style.cssText=`position:fixed;inset:0;background:linear-gradient(160deg,#
 loader.innerHTML=`
   <div style="font-size:clamp(40px,12vw,64px);animation:dragonPulse 1.2s infinite alternate;margin-bottom:20px;">🐉</div>
   <div style="font-size:clamp(18px,5vw,26px);font-weight:700;color:#c8b8ff;letter-spacing:3px;margin-bottom:6px;">Frosts Tools</div>
-  <div style="font-size:clamp(9px,2.5vw,12px);color:#443366;letter-spacing:2px;margin-bottom:36px;">VERSION 0.2.1</div>
+  <div style="font-size:clamp(9px,2.5vw,12px);color:#443366;letter-spacing:2px;margin-bottom:36px;">VERSION 0.2.2</div>
   <div style="width:clamp(160px,50vw,220px);margin-bottom:10px;">
     <div style="width:100%;height:3px;background:#1a1025;border-radius:2px;overflow:hidden;">
       <div id="frostBar" style="width:0%;height:100%;border-radius:2px;background:linear-gradient(90deg,#7b68ee,#c8b8ff,#7b68ee);background-size:200px 100%;animation:barShimmer 1.5s infinite linear;transition:width 0.3s ease;"></div>
@@ -529,7 +529,7 @@ panel.innerHTML=`
       <div style="display:flex;align-items:center;gap:8px;">
         <span style="font-size:20px;">🐉</span>
         <span style="font-weight:700;font-size:15px;letter-spacing:1px;color:#c8b8ff;">Frosts Tools</span>
-        <span style="font-size:9px;background:#1a1040;border:1px solid #7b68ee44;color:#7b68ee;padding:2px 6px;border-radius:8px;">v0.2.1</span>
+        <span style="font-size:9px;background:#1a1040;border:1px solid #7b68ee44;color:#7b68ee;padding:2px 6px;border-radius:8px;">v0.2.2</span>
       </div>
       <div style="font-size:9px;color:#443366;margin-top:2px;letter-spacing:1px;">ASN Intelligence + Network Monitor</div>
     </div>
@@ -637,7 +637,7 @@ panel.innerHTML=`
     <div style="text-align:center;margin-bottom:20px;">
       <div style="font-size:44px;margin-bottom:10px;">🐉</div>
       <div style="font-size:17px;font-weight:700;color:#c8b8ff;letter-spacing:2px;">Frosts Tools</div>
-      <div style="font-size:10px;color:#443366;margin-top:5px;letter-spacing:1px;">v0.2.1 • ASN Intelligence Update</div>
+      <div style="font-size:10px;color:#443366;margin-top:5px;letter-spacing:1px;">v0.2.2 • ASN Intelligence Update</div>
     </div>
     <div style="font-size:11px;color:#9988cc;line-height:1.8;background:#0a0818;border:1px solid #1a1030;border-radius:10px;padding:12px;margin-bottom:14px;">
       Full WebRTC peer inspector with ASN reputation database, VPN provider identification, connection quality scoring, /24 subnet clustering, country targeting, network monitoring, and site embedding.
@@ -950,7 +950,7 @@ document.getElementById('ppCopyAll').addEventListener('click',()=>{
   navigator.clipboard.writeText(text||'No peers yet').then(()=>{const btn=document.getElementById('ppCopyAll');btn.textContent='✅';setTimeout(()=>btn.textContent='📋',1500);});
 });
 document.getElementById('ppExportBtn').addEventListener('click',()=>{
-  const data={version:'0.2.1',peers:peerLog.map(p=>{const asn=lookupASN(p.org);const q=scoreConnection(p,asn);return{...p,asnInfo:asn,qualityScore:q.score,qualityReasons:q.reasons};}),events:eventLog,stats:sessionStats,connections:[...netConnections.values()],subnets:[...subnetMap.values()],protocols:protocolCounts,collection:getCollection()};
+  const data={version:'0.2.2',peers:peerLog.map(p=>{const asn=lookupASN(p.org);const q=scoreConnection(p,asn);return{...p,asnInfo:asn,qualityScore:q.score,qualityReasons:q.reasons};}),events:eventLog,stats:sessionStats,connections:[...netConnections.values()],subnets:[...subnetMap.values()],protocols:protocolCounts,collection:getCollection()};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`frosts_v021_${Date.now()}.json`;a.click();
   logEvent('info','Full session exported');
@@ -1188,7 +1188,7 @@ function buildEmbedContainer(){
     <div id="frostEmbedHeader" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:10px;margin-bottom:8px;background:${t.gradient};border:1px solid ${t.border}44;">
       <div style="display:flex;align-items:center;gap:8px;">
         <span style="font-size:16px;">🐉</span>
-        <div><div style="font-weight:700;font-size:12px;color:${t.text};">Frosts Tools</div><div style="font-size:9px;color:${t.dim};letter-spacing:1px;">v0.2.1 • ASN INTEL</div></div>
+        <div><div style="font-weight:700;font-size:12px;color:${t.text};">Frosts Tools</div><div style="font-size:9px;color:${t.dim};letter-spacing:1px;">v0.2.2 • ASN INTEL</div></div>
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
         <span id="embedPeerCount" style="font-size:10px;color:${t.dim};background:${t.header};padding:3px 8px;border-radius:10px;border:1px solid ${t.border}44;">Peers: 0</span>
@@ -1358,5 +1358,5 @@ if(disablePaymentPopups){
 
 applyTheme(currentTheme);
 if(settings.snapToEdge.val)applySnap();
-logEvent('success','Frosts Tools v0.2.1 ready');
-console.log('%c[🐉 Frosts Tools v0.2.1 — ASN Intelligence Ready]','color:#7b68ee;font-weight:bold;font-size:14px;');
+logEvent('success','Frosts Tools v0.2.2 ready');
+console.log('%c[🐉 Frosts Tools v0.2.2 — ASN Intelligence Ready]','color:#7b68ee;font-weight:bold;font-size:14px;');
