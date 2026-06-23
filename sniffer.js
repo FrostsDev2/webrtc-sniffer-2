@@ -1,5 +1,5 @@
 // ============================================================
-//  🐉 Frosts Tools v0.2.3 — Embed Redesign
+//  🐉 Frosts Tools v0.2.3 — Embed Redesign (Wider UI Mod)
 // ============================================================
 
 const origPC = window.RTCPeerConnection;
@@ -454,7 +454,8 @@ window.exportCollection=function(){const blob=new Blob([JSON.stringify(getCollec
 // ---- Panel ----
 const panel=document.createElement('div');
 panel.id='peerFloatPanel';
-panel.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:clamp(320px,92vw,460px);background:#0d0d1a;border:1px solid #7b68ee;border-radius:16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;font-size:13px;color:#c8b8ff;z-index:999999;box-shadow:0 0 0 1px rgba(123,104,238,0.15),0 24px 48px rgba(0,0,0,0.8),0 0 80px rgba(123,104,238,0.1);display:flex;flex-direction:column;overflow:hidden;max-height:clamp(520px,90vh,820px);animation:fadeIn 0.3s ease;';
+// MODIFIED: Increased clamp width from 460px to 520px and min width from 320 to 350
+panel.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:clamp(350px,92vw,520px);background:#0d0d1a;border:1px solid #7b68ee;border-radius:16px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;font-size:13px;color:#c8b8ff;z-index:999999;box-shadow:0 0 0 1px rgba(123,104,238,0.15),0 24px 48px rgba(0,0,0,0.8),0 0 80px rgba(123,104,238,0.1);display:flex;flex-direction:column;overflow:hidden;max-height:clamp(520px,90vh,820px);animation:fadeIn 0.3s ease;';
 
 panel.innerHTML=`
   <!-- Header -->
@@ -849,7 +850,7 @@ document.addEventListener('touchmove',e=>{if(!dragging)return;const t=e.touches[
 document.addEventListener('touchend',()=>dragging=false);
 const resizeHandle=document.getElementById('frostResizeHandle');let resizing=false,rox=0,roy=0,rw=0,rh=0;
 resizeHandle.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();resizing=true;rox=e.clientX;roy=e.clientY;rw=panel.offsetWidth;rh=panel.offsetHeight;});
-document.addEventListener('mousemove',e=>{if(!resizing)return;panel.style.width=Math.max(320,rw+(e.clientX-rox))+'px';panel.style.maxHeight=Math.max(400,rh+(e.clientY-roy))+'px';});
+document.addEventListener('mousemove',e=>{if(!resizing)return;panel.style.width=Math.max(350,rw+(e.clientX-rox))+'px';panel.style.maxHeight=Math.max(400,rh+(e.clientY-roy))+'px';});
 document.addEventListener('mouseup',()=>resizing=false);
 
 // ---- Open/Close ----
