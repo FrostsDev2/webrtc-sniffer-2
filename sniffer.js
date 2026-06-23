@@ -9,7 +9,7 @@ const activePeers = new Map();
 const eventLog = [];
 const connectionMap = new Map();
 const countryCollection = new Set();
-const subnetMap = new Map(); // /24 subnet tracking
+const subnetMap = new Map();
 let sessionStats = { total:0, vpn:0, residential:0, mobile:0, hosting:0, tor:0, countries:{}, totalTime:0, messages:0, skips:0, matches:0, longestConvo:0 };
 let embeddedMode = false;
 let embedLeafletMap = null;
@@ -32,6 +32,22 @@ let protocolCounts = { TCP:0, UDP:0, STUN:0, WebRTC:0, DNS:0, HTTPS:0, Other:0 }
 let webrtcStats = { state:'N/A', localCand:'N/A', remoteCand:'N/A', rtt:'N/A', jitter:'N/A', bytesSent:0, bytesReceived:0 };
 let activePC = null;
 let disablePaymentPopups = false;
+let paymentObserver = null;
+
+// ---- Private IP Filter ----
+function isPrivateIP(ip) {
+  if (!ip) return true;
+  if (ip.includes(':')) return false;
+  const p = ip.split('.').map(Number);
+  if (p.length !== 4) return true;
+  if (p[0] === 10) return true;
+  if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;
+  if (p[0] === 192 && p[1] === 168) return true;
+  if (p[0] === 127) return true;
+  if (p[0] === 169 && p[1] === 254) return true;
+  if (p[0] === 0) return true;
+  return false;
+}
 
 // ---- ASN Database ----
 const VPN_PROVIDERS = {
@@ -85,10 +101,8 @@ const BAD_ASNS = new Set([
 
 function lookupASN(org) {
   if (!org) return null;
-  const asn = org.split(' ')[0];
-  return VPN_PROVIDERS[asn] || null;
+  return VPN_PROVIDERS[org.split(' ')[0]] || null;
 }
-
 function getRiskColor(risk) {
   if (risk >= 8) return '#ff2222';
   if (risk >= 6) return '#ff6600';
@@ -96,7 +110,6 @@ function getRiskColor(risk) {
   if (risk >= 2) return '#88cc44';
   return '#00ff88';
 }
-
 function getRiskLabel(risk) {
   if (risk >= 8) return '🔴 HIGH RISK';
   if (risk >= 6) return '🟠 MEDIUM RISK';
@@ -104,59 +117,78 @@ function getRiskLabel(risk) {
   if (risk >= 2) return '🟢 CLEAN';
   return '✅ RESIDENTIAL';
 }
-
-// ---- Connection Quality Scoring ----
 function scoreConnection(p, asnInfo) {
-  let score = 5;
-  let reasons = [];
-
-  // Deduct for VPN/DC
+  let score = 5, reasons = [];
   if (p.type?.includes('VPN') || p.type?.includes('DC')) { score -= 2; reasons.push('VPN/DC'); }
   if (p.type?.includes('Hosting')) { score -= 1; reasons.push('Hosting'); }
   if (p.type?.includes('Tor')) { score -= 3; reasons.push('Tor'); }
   if (asnInfo?.risk >= 8) { score -= 2; reasons.push('Bad ASN'); }
   if (asnInfo?.risk >= 5 && asnInfo?.risk < 8) { score -= 1; reasons.push('Cloud ASN'); }
-
-  // Deduct for bad candidate type
   if (p.candType === 'relay') { score -= 1; reasons.push('Relay'); }
-
-  // Deduct for repeat peer
-  const seen = getSeenCount(p.ip);
-  if (seen > 3) { score -= 1; reasons.push(`Seen ${seen}x`); }
-
-  // Deduct for Tor
+  if (getSeenCount(p.ip) > 3) { score -= 1; reasons.push(`Seen ${getSeenCount(p.ip)}x`); }
   if (torExits.has(p.ip)) { score -= 3; reasons.push('Tor exit'); }
-
-  // Clamp
-  score = Math.max(1, Math.min(5, score));
-  return { score, reasons };
+  return { score: Math.max(1, Math.min(5, score)), reasons };
 }
-
 function renderStars(score) {
   const colors = { 1:'#ff2222', 2:'#ff6600', 3:'#ffaa00', 4:'#88cc44', 5:'#00ff88' };
-  const color = colors[score] || '#888';
-  return '★'.repeat(score) + '☆'.repeat(5-score);
+  return `<span style="color:${colors[score]||'#888'};">${'★'.repeat(score)}${'☆'.repeat(5-score)}</span>`;
 }
-
-// ---- /24 Subnet Tracker ----
 function getSubnet24(ip) {
   if (isIPv6(ip)) return null;
   const parts = ip.split('.');
   if (parts.length !== 4) return null;
   return `${parts[0]}.${parts[1]}.${parts[2]}.0/24`;
 }
-
 function trackSubnet(ip, peerData) {
   const subnet = getSubnet24(ip);
   if (!subnet) return null;
-  if (!subnetMap.has(subnet)) {
-    subnetMap.set(subnet, { subnet, ips:[], firstSeen:new Date().toLocaleTimeString() });
-  }
+  if (!subnetMap.has(subnet)) subnetMap.set(subnet, { subnet, ips:[], firstSeen:new Date().toLocaleTimeString() });
   const entry = subnetMap.get(subnet);
-  if (!entry.ips.find(e=>e.ip===ip)) {
-    entry.ips.push({ ip, city:peerData.city, country:peerData.country, time:new Date().toLocaleTimeString() });
-  }
+  if (!entry.ips.find(e=>e.ip===ip)) entry.ips.push({ ip, city:peerData.city, country:peerData.country, time:new Date().toLocaleTimeString() });
   return entry;
+}
+
+// ---- Payment Popup Blocker ----
+function enablePaymentBlocker() {
+  if (paymentObserver) return;
+  const PAY_KEYWORDS = [
+    'go premium','upgrade to premium','pay $','pay to unban',
+    'loading secure checkout','$4.99','$9.99','non-refundable',
+    '1-hour access','instant unban','⚡ go premium','skip speed slowed'
+  ];
+
+  function scanAndHide() {
+    document.querySelectorAll('div,section,aside,article').forEach(el => {
+      const text = (el.innerText || '').toLowerCase();
+      const isPayment = PAY_KEYWORDS.some(k => text.includes(k.toLowerCase()));
+      const style = getComputedStyle(el);
+      const isOverlay = style.position === 'fixed' || style.position === 'absolute';
+      const isSmall = el.children.length < 25;
+      if (isPayment && isOverlay && isSmall) {
+        el.style.setProperty('display', 'none', 'important');
+      }
+    });
+    // Also hide "skip speed slowed" banner
+    document.querySelectorAll('*').forEach(el => {
+      if (!el.children.length && (el.innerText||'').toLowerCase().includes('skip speed slowed')) {
+        const parent = el.closest('div') || el.parentElement;
+        if (parent) parent.style.setProperty('display', 'none', 'important');
+      }
+    });
+  }
+
+  scanAndHide();
+  paymentObserver = new MutationObserver(scanAndHide);
+  paymentObserver.observe(document.body, { childList:true, subtree:true });
+  logEvent('success', '💳 Payment popup blocker enabled');
+}
+
+function disablePaymentBlocker() {
+  if (paymentObserver) { paymentObserver.disconnect(); paymentObserver = null; }
+  document.querySelectorAll('[style*="display: none"]').forEach(el => {
+    el.style.removeProperty('display');
+  });
+  logEvent('info', '💳 Payment popup blocker disabled');
 }
 
 // ---- Cookie / Storage ----
@@ -189,81 +221,6 @@ function saveCollection(items) { try { localStorage.setItem('frostCollection',JS
 function addToCollection(ip, data) {
   const col = getCollection();
   if (!col.find(c=>c.ip===ip)) { col.push({ip,...data,saved:new Date().toLocaleString()}); saveCollection(col); }
-}
-
-// ---- Payment Popup Blocker ----
-function initPaymentPopupBlocker() {
-  if (!disablePaymentPopups) return;
-  
-  // Watch for new elements being added to the DOM
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeType === 1) { // Element node
-          // Check if this is a payment popup or contains one
-          if (node.id && (node.id.includes('payment') || node.id.includes('pay') || node.id.includes('modal'))) {
-            node.style.display = 'none';
-            node.remove();
-          }
-          // Check for payment popup classes
-          if (node.className && typeof node.className === 'string') {
-            const classes = node.className.split(' ');
-            if (classes.some(c => c.includes('payment') || c.includes('pay') || c.includes('modal') || c.includes('popup'))) {
-              node.style.display = 'none';
-              node.remove();
-            }
-          }
-          // Check for payment button clicks
-          if (node.tagName === 'BUTTON' && node.textContent && 
-              (node.textContent.toLowerCase().includes('pay') || 
-               node.textContent.toLowerCase().includes('buy') || 
-               node.textContent.toLowerCase().includes('purchase') ||
-               node.textContent.toLowerCase().includes('upgrade'))) {
-            node.addEventListener('click', (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              return false;
-            });
-          }
-        }
-      });
-    });
-  });
-
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
-
-  // Also block existing payment elements
-  document.querySelectorAll('*').forEach(el => {
-    if (el.id && (el.id.includes('payment') || el.id.includes('pay') || el.id.includes('modal'))) {
-      el.style.display = 'none';
-      el.remove();
-    }
-    if (el.className && typeof el.className === 'string') {
-      const classes = el.className.split(' ');
-      if (classes.some(c => c.includes('payment') || c.includes('pay') || c.includes('modal') || c.includes('popup'))) {
-        el.style.display = 'none';
-        el.remove();
-      }
-    }
-  });
-
-  // Block payment-related event listeners
-  document.addEventListener('click', (e) => {
-    const target = e.target;
-    if (target.tagName === 'BUTTON' && target.textContent) {
-      const text = target.textContent.toLowerCase();
-      if (text.includes('pay') || text.includes('buy') || text.includes('purchase') || text.includes('upgrade')) {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      }
-    }
-  }, true);
-
-  logEvent('success', '💳 Payment popups blocked');
 }
 
 // ---- Tor ----
@@ -365,8 +322,7 @@ styleTag.textContent = `
   .frost-bad-asn { animation:badASN 1.5s ease infinite; }
   .frost-subnet-alert { animation:subnetAlert 1.5s ease infinite; }
   #ppBody::-webkit-scrollbar,#tabSettings::-webkit-scrollbar,#tabStats::-webkit-scrollbar,
-  #tabEvents::-webkit-scrollbar,#tabSubnets::-webkit-scrollbar,
-  #frostEmbedContainer::-webkit-scrollbar,#netContent::-webkit-scrollbar { width:3px; }
+  #tabEvents::-webkit-scrollbar,#frostEmbedContainer::-webkit-scrollbar,#netContent::-webkit-scrollbar { width:3px; }
   #ppBody::-webkit-scrollbar-thumb,#tabSettings::-webkit-scrollbar-thumb,
   #tabStats::-webkit-scrollbar-thumb,#tabEvents::-webkit-scrollbar-thumb,
   #frostEmbedContainer::-webkit-scrollbar-thumb,#netContent::-webkit-scrollbar-thumb { background:#333;border-radius:2px; }
@@ -381,7 +337,6 @@ styleTag.textContent = `
   .frost-select:focus { border-color:#7b68ee; }
   .quality-stars { letter-spacing:1px;font-size:13px; }
   .asn-badge { display:inline-flex;align-items:center;gap:3px;border-radius:6px;padding:3px 7px;font-size:10px;border:1px solid;margin-top:4px; }
-  .subnet-cluster { border-radius:8px;padding:8px 10px;margin-bottom:6px;border:1px solid; }
   #frostEmbedContainer { animation:fadeInScale 0.3s ease; }
   .embedPeerCard { border-radius:10px;overflow:hidden;margin-bottom:8px; }
   .frostStatBar { height:4px;background:#111;border-radius:2px;overflow:hidden;margin-top:3px; }
@@ -396,18 +351,12 @@ document.body.appendChild(overlay);
 function updateOverlay(){overlay.style.display=settings.darkOverlay.val?'block':'none';}
 
 // ---- Sound ----
-function playPing(freq=880){
-  try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator(),g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.type='sine';o.frequency.value=freq;g.gain.setValueAtTime(0.3,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.4);o.start();o.stop(ctx.currentTime+0.4);}catch(e){}
-}
+function playPing(freq=880){try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator(),g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.type='sine';o.frequency.value=freq;g.gain.setValueAtTime(0.3,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.4);o.start();o.stop(ctx.currentTime+0.4);}catch(e){}}
 function playMatchSound(){playPing(440);setTimeout(()=>playPing(660),150);}
 function playBadASNSound(){playPing(200);setTimeout(()=>playPing(150),200);}
 
 // ---- Event log ----
-function logEvent(severity,desc){
-  eventLog.unshift({time:new Date().toLocaleTimeString(),severity,desc});
-  if(eventLog.length>200)eventLog.pop();
-  if(activeTab==='events')updateEventLog();
-}
+function logEvent(severity,desc){eventLog.unshift({time:new Date().toLocaleTimeString(),severity,desc});if(eventLog.length>200)eventLog.pop();if(activeTab==='events')updateEventLog();}
 
 // ---- Loader ----
 const loader=document.createElement('div');
@@ -429,10 +378,7 @@ document.body.appendChild(loader);
 const steps=['HOOKING WEBRTC...','LOADING TOR LIST...','LOADING ASN DATABASE...','BUILDING UI...','RESTORING SETTINGS...','READY 🐉'];
 let step=0;
 const barEl=document.getElementById('frostBar'),txtEl=document.getElementById('frostLoadTxt');
-const loadInterval=setInterval(()=>{
-  step++;barEl.style.width=((step/steps.length)*100)+'%';txtEl.textContent=steps[step-1]||'';
-  if(step>=steps.length){clearInterval(loadInterval);setTimeout(()=>{loader.style.animation='loaderFadeOut 0.5s ease forwards';setTimeout(()=>loader.remove(),500);},400);}
-},380);
+const loadInterval=setInterval(()=>{step++;barEl.style.width=((step/steps.length)*100)+'%';txtEl.textContent=steps[step-1]||'';if(step>=steps.length){clearInterval(loadInterval);setTimeout(()=>{loader.style.animation='loaderFadeOut 0.5s ease forwards';setTimeout(()=>loader.remove(),500);},400);}},380);
 
 // ---- Dragon ----
 const dragon=document.createElement('div');
@@ -481,19 +427,16 @@ function buildCountryTargetHTML(){
       <span style="font-size:11px;color:#9988cc;">Auto-skip non-target</span>
     </div>
     <div id="targetCountryDisplay" style="margin-top:8px;font-size:11px;color:${currentTheme.border};">${targetCountry?`🎯 Targeting: ${COUNTRIES[targetCountry]||targetCountry}`:'🌍 No target set'}</div>
-  </div>`;
-}
-
-function buildPaymentPopupHTML(){
-  return `<div style="font-size:10px;color:#443366;letter-spacing:2px;margin-bottom:10px;font-weight:600;">💳 PAYMENT POPUPS</div>
+  </div>
+  <div style="font-size:10px;color:#443366;letter-spacing:2px;margin-bottom:10px;font-weight:600;">💳 PAYMENT POPUPS</div>
   <div style="background:#0a0818;border:1px solid #2a1a4a;border-radius:10px;padding:12px;margin-bottom:14px;">
-    <div style="display:flex;gap:8px;margin-top:8px;align-items:center;">
+    <div style="display:flex;gap:8px;align-items:center;">
       <div id="paymentPopupToggle" style="width:44px;height:24px;border-radius:12px;flex-shrink:0;background:${disablePaymentPopups?currentTheme.border:'#1e1e1e'};border:1px solid ${disablePaymentPopups?currentTheme.border:'#333'};position:relative;cursor:pointer;">
         <div class="frostKnob" style="position:absolute;top:3px;left:${disablePaymentPopups?'21px':'3px'};width:16px;height:16px;border-radius:50%;background:${disablePaymentPopups?'#fff':'#555'};"></div>
       </div>
       <span style="font-size:11px;color:#9988cc;">Disable payment popups</span>
     </div>
-    <div style="margin-top:8px;font-size:10px;color:#443366;line-height:1.5;">Blocks all payment, upgrade, and purchase popups on the site.</div>
+    <div style="margin-top:8px;font-size:10px;color:#443366;line-height:1.5;">Hides premium upgrade, unban, and payment modals on the site.</div>
   </div>`;
 }
 
@@ -614,7 +557,6 @@ panel.innerHTML=`
   <div id="tabSettings" style="display:none;overflow-y:auto;padding:12px 14px;flex:1;">
     ${buildThemeHTML()}
     ${buildCountryTargetHTML()}
-    ${buildPaymentPopupHTML()}
     <div style="font-size:10px;color:#443366;letter-spacing:2px;margin-bottom:8px;font-weight:600;">DISPLAY</div>
     ${['showAll','compactMode','showTimestamp','showCoords','showPostal','showPort','showCandType','highlightVPN','darkOverlay','showTimeline'].map(buildToggleHTML).join('')}
     <div style="font-size:10px;color:#443366;letter-spacing:2px;margin:14px 0 8px;font-weight:600;">FILTERING</div>
@@ -640,7 +582,7 @@ panel.innerHTML=`
       <div style="font-size:10px;color:#443366;margin-top:5px;letter-spacing:1px;">v0.2.2 • ASN Intelligence Update</div>
     </div>
     <div style="font-size:11px;color:#9988cc;line-height:1.8;background:#0a0818;border:1px solid #1a1030;border-radius:10px;padding:12px;margin-bottom:14px;">
-      Full WebRTC peer inspector with ASN reputation database, VPN provider identification, connection quality scoring, /24 subnet clustering, country targeting, network monitoring, and site embedding.
+      Full WebRTC peer inspector with ASN reputation database, VPN provider identification, connection quality scoring, /24 subnet clustering, country targeting, payment popup blocker, and network monitoring.
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
       <a href="https://discord.gg" target="_blank" style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;background:#0d0a1a;border:1px solid #2a1a4a;color:#7b68ee;text-decoration:none;font-size:12px;">
@@ -660,10 +602,10 @@ panel.innerHTML=`
 document.body.appendChild(panel);
 
 // ---- Net content updater ----
-function updateNetContent() {
+function updateNetContent(){
   const el=document.getElementById('netContent');if(!el)return;
   const t=currentTheme;
-  if (activeNetSubTab==='connections') {
+  if(activeNetSubTab==='connections'){
     const conns=[...netConnections.values()].sort((a,b)=>b.packets-a.packets).slice(0,30);
     el.innerHTML=conns.length===0?`<div style="color:#443366;text-align:center;padding:20px 0;font-size:11px;">No connections yet.</div>`:conns.map(c=>`
       <div style="border:1px solid ${t.border}22;border-left:3px solid ${c.color};border-radius:8px;padding:8px 10px;margin-bottom:6px;background:${t.header}88;font-size:10px;">
@@ -674,26 +616,24 @@ function updateNetContent() {
         <div style="color:${t.sub};">Pkts: ${c.packets} • Bytes: ${formatBytes(c.bytes)} • Port: ${c.port}</div>
         <div style="color:${t.dim};">Last: ${c.lastSeen}</div>
       </div>`).join('');
-  } else if (activeNetSubTab==='protocols') {
+  }else if(activeNetSubTab==='protocols'){
     const total=Object.values(protocolCounts).reduce((a,b)=>a+b,0)||1;
     const colors={TCP:'#00bfff',UDP:'#ffaa00',STUN:'#00ff88',WebRTC:'#ff69b4',DNS:'#aaffcc',HTTPS:'#7b68ee',Other:'#888'};
-    el.innerHTML=`
-      <div style="margin-bottom:12px;">
-        ${Object.entries(protocolCounts).map(([proto,count])=>`
-          <div style="margin-bottom:8px;">
-            <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
-              <span style="color:${colors[proto]||'#888'};">${proto}</span>
-              <span style="color:${t.dim};">${count} (${Math.round(count/total*100)}%)</span>
-            </div>
-            <div class="frostStatBar"><div class="frostStatBarFill" style="width:${Math.round(count/total*100)}%;background:${colors[proto]||'#888'};"></div></div>
-          </div>`).join('')}
-      </div>
-      <div style="background:${t.header};border:1px solid ${t.border}22;border-radius:8px;padding:10px;font-size:11px;">
-        <div style="color:${t.dim};margin-bottom:4px;">TOTALS</div>
-        <div style="color:${t.text};">Packets: ${totalPackets}</div>
-        <div style="color:${t.sub};">Bytes: ${formatBytes(totalBytes)}</div>
-      </div>`;
-  } else if (activeNetSubTab==='live') {
+    el.innerHTML=`<div style="margin-bottom:12px;">${Object.entries(protocolCounts).map(([proto,count])=>`
+      <div style="margin-bottom:8px;">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
+          <span style="color:${colors[proto]||'#888'};">${proto}</span>
+          <span style="color:${t.dim};">${count} (${Math.round(count/total*100)}%)</span>
+        </div>
+        <div class="frostStatBar"><div class="frostStatBarFill" style="width:${Math.round(count/total*100)}%;background:${colors[proto]||'#888'};"></div></div>
+      </div>`).join('')}
+    </div>
+    <div style="background:${t.header};border:1px solid ${t.border}22;border-radius:8px;padding:10px;font-size:11px;">
+      <div style="color:${t.dim};margin-bottom:4px;">TOTALS</div>
+      <div style="color:${t.text};">Packets: ${totalPackets}</div>
+      <div style="color:${t.sub};">Bytes: ${formatBytes(totalBytes)}</div>
+    </div>`;
+  }else if(activeNetSubTab==='live'){
     const maxPPS=Math.max(...ppsHistory,1);
     const bars=ppsHistory.map(p=>`<div style="flex:1;background:${t.border};border-radius:2px 2px 0 0;height:${Math.round((p/maxPPS)*60)}px;min-height:2px;opacity:0.8;"></div>`).join('');
     el.innerHTML=`
@@ -704,14 +644,14 @@ function updateNetContent() {
         <div style="font-size:10px;color:${t.dim};margin-bottom:6px;">PACKETS/SEC (30s)</div>
         <div style="display:flex;align-items:flex-end;gap:2px;height:64px;">${bars}</div>
       </div>`;
-  } else if (activeNetSubTab==='webrtc') {
+  }else if(activeNetSubTab==='webrtc'){
     const s=webrtcStats;
     el.innerHTML=`<div style="display:flex;flex-direction:column;gap:8px;">
       <div style="background:${t.header};border:1px solid ${t.border}22;border-radius:8px;padding:12px;">
         <div style="font-size:10px;color:${t.dim};margin-bottom:4px;">CONNECTION STATE</div>
         <div style="font-size:14px;font-weight:700;color:${s.state==='Connected'?'#00ff88':t.border};">${s.state}</div>
       </div>
-      ${[['🏠 Local',s.localCand],['🌐 Remote',s.remoteCand],['📶 RTT',s.rtt],['🎵 Jitter',s.jitter],['⬆ Sent',formatBytes(s.bytesSent)],['⬇️ Received',formatBytes(s.bytesReceived)]].map(([l,v])=>`<div style="background:${t.header};border:1px solid ${t.border}22;border-radius:8px;padding:10px;"><div style="font-size:10px;color:${t.dim};">${l}</div><div style="font-size:11px;color:${t.text};margin-top:3px;word-break:break-all;">${v}</div></div>`).join('')}
+      ${[['🏠 Local',s.localCand],['🌐 Remote',s.remoteCand],['📶 RTT',s.rtt],['🎵 Jitter',s.jitter],['⬆️ Sent',formatBytes(s.bytesSent)],['⬇️ Received',formatBytes(s.bytesReceived)]].map(([l,v])=>`<div style="background:${t.header};border:1px solid ${t.border}22;border-radius:8px;padding:10px;"><div style="font-size:10px;color:${t.dim};">${l}</div><div style="font-size:11px;color:${t.text};margin-top:3px;word-break:break-all;">${v}</div></div>`).join('')}
     </div>`;
   }
 }
@@ -785,33 +725,25 @@ document.querySelectorAll('.tabBtn').forEach(btn=>{
   });
 });
 
-// ---- Net sub tabs ----
+// ---- Click delegation ----
 document.addEventListener('click',e=>{
   if(e.target.classList.contains('netSubBtn')){
     activeNetSubTab=e.target.dataset.net;
-    document.querySelectorAll('.netSubBtn').forEach(b=>{
-      const a=b.dataset.net===activeNetSubTab;
-      b.style.background=a?currentTheme.header:'none';b.style.color=a?currentTheme.text:currentTheme.dim;b.style.borderBottom=a?`2px solid ${currentTheme.border}`:'2px solid transparent';
-    });
+    document.querySelectorAll('.netSubBtn').forEach(b=>{const a=b.dataset.net===activeNetSubTab;b.style.background=a?currentTheme.header:'none';b.style.color=a?currentTheme.text:currentTheme.dim;b.style.borderBottom=a?`2px solid ${currentTheme.border}`:'2px solid transparent';});
     updateNetContent();
   }
   if(e.target.classList.contains('themeBtn')&&e.target.dataset.theme)applyTheme(themes[e.target.dataset.theme]);
   if(e.target.id==='autoSkipToggle'||e.target.closest('#autoSkipToggle')){
     autoSkipEnabled=!autoSkipEnabled;
     const tog=document.getElementById('autoSkipToggle');
-    if(tog){tog.style.background=autoSkipEnabled?currentTheme.border:'#1e1e1e';tog.querySelector('.frostKnob').style.left=autoSkipEnabled?'21px':'3px';}
+    if(tog){tog.style.background=autoSkipEnabled?currentTheme.border:'#1e1e1e';tog.style.borderColor=autoSkipEnabled?currentTheme.border:'#333';const k=tog.querySelector('.frostKnob');if(k){k.style.left=autoSkipEnabled?'21px':'3px';k.style.background=autoSkipEnabled?'#fff':'#555';}}
     saveCookies();
   }
   if(e.target.id==='paymentPopupToggle'||e.target.closest('#paymentPopupToggle')){
     disablePaymentPopups=!disablePaymentPopups;
     const tog=document.getElementById('paymentPopupToggle');
-    if(tog){tog.style.background=disablePaymentPopups?currentTheme.border:'#1e1e1e';tog.querySelector('.frostKnob').style.left=disablePaymentPopups?'21px':'3px';}
-    if(disablePaymentPopups){
-      initPaymentPopupBlocker();
-      logEvent('success', '💳 Payment popup blocking enabled');
-    } else {
-      logEvent('info', '💳 Payment popup blocking disabled');
-    }
+    if(tog){tog.style.background=disablePaymentPopups?currentTheme.border:'#1e1e1e';tog.style.borderColor=disablePaymentPopups?currentTheme.border:'#333';const k=tog.querySelector('.frostKnob');if(k){k.style.left=disablePaymentPopups?'21px':'3px';k.style.background=disablePaymentPopups?'#fff':'#555';}}
+    if(disablePaymentPopups)enablePaymentBlocker();else disablePaymentBlocker();
     saveCookies();
   }
 });
@@ -826,13 +758,13 @@ document.getElementById('targetCountrySelect')?.addEventListener('change',e=>{
 
 // ---- Toggles ----
 document.querySelectorAll('.frostToggle').forEach(wrap=>{
-  if(wrap.id==='autoSkipToggle' || wrap.id==='paymentPopupToggle')return;
+  if(wrap.id==='autoSkipToggle'||wrap.id==='paymentPopupToggle')return;
   wrap.addEventListener('click',()=>{
     const key=wrap.dataset.key;if(!key||!settings[key])return;
     settings[key].val=!settings[key].val;
     const on=settings[key].val;
     wrap.style.background=on?currentTheme.border:'#1e1e1e';wrap.style.borderColor=on?currentTheme.border:'#333';
-    const knob=wrap.querySelector('.frostKnob');knob.style.left=on?'21px':'3px';knob.style.background=on?'#fff':'#555';
+    const knob=wrap.querySelector('.frostKnob');if(knob){knob.style.left=on?'21px':'3px';knob.style.background=on?'#fff':'#555';}
     if(key==='darkOverlay')updateOverlay();
     if(key==='snapToEdge')applySnap();
     if((key==='embedDarkMode'||key==='siteMods')&&embeddedMode)applySiteTheme(currentTheme);
@@ -846,26 +778,14 @@ function formatDuration(ms){if(!ms)return'0s';const s=Math.floor(ms/1000);return
 function isCloudflare(ip){return['104.30.','104.16.','104.17.','104.18.','104.19.','172.64.','162.158.'].some(p=>ip.startsWith(p));}
 function isIPv6(ip){return ip.includes(':');}
 function classifyASN(org){
-  const asn=org?.split(' ')[0];
-  const known=VPN_PROVIDERS[asn];
-  if(known){
-    if(known.type==='VPN'||known.type==='VPN_HOST')return'🔴 VPN/DC';
-    if(known.type==='CLOUD')return'🟡 Hosting';
-    if(known.type==='MOBILE')return'📱 Mobile';
-    if(known.type==='ISP')return'🟢 Residential';
-  }
+  const asn=org?.split(' ')[0];const known=VPN_PROVIDERS[asn];
+  if(known){if(known.type==='VPN'||known.type==='VPN_HOST')return'🔴 VPN/DC';if(known.type==='CLOUD')return'🟡 Hosting';if(known.type==='MOBILE')return'📱 Mobile';if(known.type==='ISP')return'🟢 Residential';}
   if(org?.toLowerCase().includes('vpn'))return'🔴 VPN';
   if(org?.toLowerCase().includes('hosting'))return'🟡 Hosting';
   if(org?.toLowerCase().includes('wireless')||org?.toLowerCase().includes('mobile'))return'📱 Mobile';
   return'🟢 Residential';
 }
-function getMarkerColor(p){
-  if(p.type?.includes('🧅'))return'#ff8800';
-  if(p.type?.includes('🔴'))return'#ff4444';
-  if(p.type?.includes('🟡'))return'#ffaa00';
-  if(p.type?.includes('📱'))return'#00bfff';
-  return currentTheme.border;
-}
+function getMarkerColor(p){if(p.type?.includes('🧅'))return'#ff8800';if(p.type?.includes('🔴'))return'#ff4444';if(p.type?.includes('🟡'))return'#ffaa00';if(p.type?.includes('📱'))return'#00bfff';return currentTheme.border;}
 
 // ---- Map ----
 function initMap(){
@@ -878,22 +798,8 @@ function setupMap(){
   const el=document.getElementById('frostMap');el.style.height='100%';
   leafletMap=L.map('frostMap',{zoomControl:true,attributionControl:false}).setView([20,0],2);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(leafletMap);
-  // Add all existing peers to the map
-  peerLog.forEach(p => addMapMarker(p, false));
-  if(peerLog.length > 0) {
-    // Fly to the most recent peer
-    const lastPeer = peerLog[peerLog.length - 1];
-    if(lastPeer && lastPeer.loc && lastPeer.loc !== '?') {
-      const [lat, lon] = lastPeer.loc.split(',').map(Number);
-      if(!isNaN(lat) && !isNaN(lon)) {
-        leafletMap.setView([lat, lon], 8);
-        // Open popup for the last marker
-        setTimeout(() => {
-          if(currentMapMarker) currentMapMarker.openPopup();
-        }, 500);
-      }
-    }
-  }
+  peerLog.forEach(p=>addMapMarker(p,false));
+  if(peerLog.length>0)flyToLatest();
 }
 function addMapMarker(p,fly=true){
   if(!leafletMap||!p.loc||p.loc==='?')return;
@@ -901,19 +807,8 @@ function addMapMarker(p,fly=true){
   const color=getMarkerColor(p);
   const icon=L.divIcon({className:'',html:`<div style="width:16px;height:16px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 10px ${color};"></div>`,iconSize:[16,16],iconAnchor:[8,8]});
   const m=L.marker([lat,lon],{icon}).addTo(leafletMap);
-  m.bindPopup(`<div style="font-family:monospace;font-size:11px;min-width:160px;line-height:1.6;">
-    <b style="color:#c8b8ff;">${p.ip}</b><br>
-    ${p.city}, ${p.region}<br>
-    ${p.country}<br>
-    <span style="color:#9988cc;">${p.org}</span><br>
-    <span style="color:${color};">${p.type}</span>
-    ${p.port && p.port !== '?' ? `<br>🔌 Port: ${p.port}` : ''}
-    ${p.candType && p.candType !== '?' ? `<br>📡 ${p.candType}` : ''}
-    ${p.time ? `<br>🕐 ${p.time}` : ''}
-  </div>`);
-  mapMarkers.push(m);
-  currentMapMarker=m;
-  if(fly)flyToLatest();
+  m.bindPopup(`<div style="font-family:monospace;font-size:11px;min-width:160px;line-height:1.6;"><b style="color:#c8b8ff;">${p.ip}</b><br>${p.city}, ${p.region}<br>${p.country}<br><span style="color:#9988cc;">${p.org}</span><br><span style="color:${color};">${p.type}</span></div>`);
+  mapMarkers.push(m);currentMapMarker=m;if(fly)flyToLatest();
 }
 function flyToLatest(){
   if(!leafletMap||!currentMapMarker)return;
@@ -921,7 +816,7 @@ function flyToLatest(){
   setTimeout(()=>currentMapMarker.openPopup(),1600);
 }
 
-// ---- Snap / Drag / Resize ----
+// ---- Snap/Drag/Resize ----
 function applySnap(){if(settings.snapToEdge.val){panel.style.transform='none';panel.style.top='10px';panel.style.left='auto';panel.style.right='10px';panel.style.maxHeight='calc(100vh - 20px)';}}
 document.getElementById('ppSnapBtn').addEventListener('click',()=>{settings.snapToEdge.val=!settings.snapToEdge.val;applySnap();saveCookies();});
 const pph=document.getElementById('pph');let dragging=false,ox=0,oy=0;
@@ -943,16 +838,13 @@ document.getElementById('ppClose').addEventListener('click',closePanel);
 
 // ---- Copy/Export ----
 document.getElementById('ppCopyAll').addEventListener('click',()=>{
-  const text=peerLog.map((p,i)=>{
-    const asn=lookupASN(p.org);const{score,reasons}=scoreConnection(p,asn);
-    return[`--- Peer #${i+1} ---`,`IP: ${p.ip}`,`Type: ${p.label} ${p.type}`,`City: ${p.city}, ${p.region}`,`Country: ${p.country}`,`ISP: ${p.org}`,`ASN Provider: ${asn?.name||'Unknown'} (${asn?.label||'?'})`,`Quality Score: ${renderStars(score)} ${score}/5`,`Risk: ${getRiskLabel(asn?.risk||0)}`,`Reasons: ${reasons.join(', ')||'None'}`,`Time: ${p.time}`].join('\n');
-  }).join('\n\n');
+  const text=peerLog.map((p,i)=>{const asn=lookupASN(p.org);const{score,reasons}=scoreConnection(p,asn);return[`--- Peer #${i+1} ---`,`IP: ${p.ip}`,`Type: ${p.label} ${p.type}`,`City: ${p.city}, ${p.region}`,`Country: ${p.country}`,`ISP: ${p.org}`,`ASN: ${asn?.name||'Unknown'} (${asn?.label||'?'})`,`Quality: ${score}/5`,`Risk: ${getRiskLabel(asn?.risk||0)}`,`Reasons: ${reasons.join(', ')||'None'}`,`Time: ${p.time}`].join('\n');}).join('\n\n');
   navigator.clipboard.writeText(text||'No peers yet').then(()=>{const btn=document.getElementById('ppCopyAll');btn.textContent='✅';setTimeout(()=>btn.textContent='📋',1500);});
 });
 document.getElementById('ppExportBtn').addEventListener('click',()=>{
   const data={version:'0.2.2',peers:peerLog.map(p=>{const asn=lookupASN(p.org);const q=scoreConnection(p,asn);return{...p,asnInfo:asn,qualityScore:q.score,qualityReasons:q.reasons};}),events:eventLog,stats:sessionStats,connections:[...netConnections.values()],subnets:[...subnetMap.values()],protocols:protocolCounts,collection:getCollection()};
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`frosts_v021_${Date.now()}.json`;a.click();
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`frosts_v022_${Date.now()}.json`;a.click();
   logEvent('info','Full session exported');
 });
 document.getElementById('ppClear').addEventListener('click',()=>{
@@ -970,11 +862,10 @@ document.getElementById('ppClearHistory').addEventListener('click',()=>{
 });
 
 // ---- Add peer to panel ----
-function addToPanel(p) {
+function addToPanel(p){
   const body=document.getElementById('ppBody');
   if(!settings.showAll.val){body.innerHTML='';peerCountFloat=0;}
   const empty=document.getElementById('ppEmpty');if(empty)empty.remove();
-
   const isTor=torExits.has(p.ip);
   const seenCount=getSeenCount(p.ip);
   const color=getMarkerColor(p);
@@ -1020,27 +911,18 @@ function addToPanel(p) {
   if(!settings.compactMode.val){
     html+=`<div style="color:${currentTheme.sub};font-size:11px;">📍 ${p.city}, ${p.region} ${p.country}</div>`;
     html+=`<div style="color:${currentTheme.sub};font-size:11px;margin-top:2px;">🏢 ${p.org}</div>`;
-
-    // ASN Intelligence block
     if(settings.showASNInfo.val&&asnInfo){
-      html+=`<div class="asn-badge" style="background:${riskColor}22;border-color:${riskColor}44;color:${riskColor};margin-top:4px;">
-        🏢 ${asnInfo.name} • ${asnInfo.label} • Risk ${asnInfo.risk}/10
-      </div>`;
+      html+=`<div class="asn-badge" style="background:${riskColor}22;border-color:${riskColor}44;color:${riskColor};margin-top:4px;">🏢 ${asnInfo.name} • ${asnInfo.label} • Risk ${asnInfo.risk}/10</div>`;
     }
-
-    // Quality score
     if(settings.showQualityScore.val){
       html+=`<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-        <span class="quality-stars" style="color:${riskColor};font-size:13px;">${renderStars(score)}</span>
+        <span style="color:${riskColor};font-size:13px;letter-spacing:1px;">${'★'.repeat(score)}${'☆'.repeat(5-score)}</span>
         <span style="font-size:10px;color:${currentTheme.dim};">${score}/5 ${reasons.length?'('+reasons.join(', ')+')':''}</span>
       </div>`;
     }
-
-    // Subnet cluster info
     if(isSubnetCluster&&settings.showSubnetAlert.val){
       html+=`<div style="font-size:10px;color:#ffaa00;margin-top:4px;">🕸️ ${subnetEntry.ips.length} IPs from ${subnetEntry.subnet}</div>`;
     }
-
     const extras=[];
     if(settings.showCoords.val)extras.push(`🌐 ${p.loc}`);
     if(settings.showPostal.val)extras.push(`📮 ${p.postal}`);
@@ -1051,7 +933,7 @@ function addToPanel(p) {
     html+=`<textarea class="peerNote" placeholder="Add a note..." rows="1" onfocus="this.rows=3" onblur="this.rows=1"></textarea>`;
   }else{
     html+=`<div style="color:${currentTheme.sub};font-size:10px;">📍 ${p.city}, ${p.country} • 🏢 ${p.org}</div>`;
-    if(settings.showQualityScore.val)html+=`<span class="quality-stars" style="color:${riskColor};font-size:11px;">${renderStars(score)}</span>`;
+    if(settings.showQualityScore.val)html+=`<span style="color:${riskColor};font-size:11px;letter-spacing:1px;">${'★'.repeat(score)}${'☆'.repeat(5-score)}</span>`;
   }
 
   entry.innerHTML=html;body.appendChild(entry);
@@ -1060,27 +942,15 @@ function addToPanel(p) {
 
   if(settings.showDuration.val){
     const startTime=Date.now();const durId=`dur_${p.ip.replace(/[:.]/g,'_')}`;const tlId=`tl_${p.ip.replace(/[:.]/g,'_')}`;
-    const timer=setInterval(()=>{
-      const el=document.getElementById(durId);const tl=document.getElementById(tlId);
-      if(!el){clearInterval(timer);return;}
-      const secs=Math.floor((Date.now()-startTime)/1000);const mins=Math.floor(secs/60);
-      el.innerHTML=`⏱️ ${mins>0?mins+'m ':''}${secs%60}s <span class="liveDot" style="color:${color};">●</span>`;
-      if(tl)tl.style.width=Math.min(100,(secs/300)*100)+'%';
-    },1000);
+    const timer=setInterval(()=>{const el=document.getElementById(durId);const tl=document.getElementById(tlId);if(!el){clearInterval(timer);return;}const secs=Math.floor((Date.now()-startTime)/1000);const mins=Math.floor(secs/60);el.innerHTML=`⏱️ ${mins>0?mins+'m ':''}${secs%60}s <span class="liveDot" style="color:${color};">●</span>`;if(tl)tl.style.width=Math.min(100,(secs/300)*100)+'%';},1000);
     activePeers.set(p.ip,{timer,startTime});
   }
-  // Add marker to map if map is loaded
-  if(leafletMap) {
-    addMapMarker(p, true);
-  }
+  if(leafletMap)addMapMarker(p,true);
   if(activeTab==='stats')updateStats();
 }
 
 // ---- WebRTC Stats Polling ----
-setInterval(()=>{
-  if(!activePC)return;
-  try{activePC.getStats().then(stats=>{stats.forEach(r=>{if(r.type==='candidate-pair'&&r.state==='succeeded'&&r.nominated){webrtcStats.rtt=r.currentRoundTripTime?(r.currentRoundTripTime*1000).toFixed(0)+'ms':'N/A';webrtcStats.bytesSent=r.bytesSent||0;webrtcStats.bytesReceived=r.bytesReceived||0;webrtcStats.state='Connected';const rem=stats.get(r.remoteCandidateId);const loc=stats.get(r.localCandidateId);if(rem)webrtcStats.remoteCand=`${rem.address}:${rem.port} (${rem.candidateType})`;if(loc)webrtcStats.localCand=`${loc.address}:${loc.port} (${loc.candidateType})`;}if(r.type==='inbound-rtp'&&r.kind==='audio')webrtcStats.jitter=r.jitter?(r.jitter*1000).toFixed(1)+'ms':'N/A';});});}catch(e){}
-},2000);
+setInterval(()=>{if(!activePC)return;try{activePC.getStats().then(stats=>{stats.forEach(r=>{if(r.type==='candidate-pair'&&r.state==='succeeded'&&r.nominated){webrtcStats.rtt=r.currentRoundTripTime?(r.currentRoundTripTime*1000).toFixed(0)+'ms':'N/A';webrtcStats.bytesSent=r.bytesSent||0;webrtcStats.bytesReceived=r.bytesReceived||0;webrtcStats.state='Connected';const rem=stats.get(r.remoteCandidateId);const loc=stats.get(r.localCandidateId);if(rem)webrtcStats.remoteCand=`${rem.address}:${rem.port} (${rem.candidateType})`;if(loc)webrtcStats.localCand=`${loc.address}:${loc.port} (${loc.candidateType})`;}if(r.type==='inbound-rtp'&&r.kind==='audio')webrtcStats.jitter=r.jitter?(r.jitter*1000).toFixed(1)+'ms':'N/A';});});}catch(e){}},2000);
 setInterval(()=>{ppsHistory.push(ppsCount);if(ppsHistory.length>30)ppsHistory.shift();ppsCount=0;if(activeNetSubTab==='live'&&activeTab==='network')updateNetContent();},1000);
 
 // ---- Site theme ----
@@ -1098,7 +968,7 @@ function applyTheme(t){
   dragon.style.filter=`drop-shadow(0 0 10px ${t.border})`;
   document.getElementById('pph').style.background=t.gradient;
   document.getElementById('ppTabs').style.background=t.bg;
-  document.querySelectorAll('.frostToggle').forEach(w=>{if(w.id==='autoSkipToggle'||w.id==='paymentPopupToggle')return;const key=w.dataset.key;if(!key||!settings[key])return;const on=settings[key].val;w.style.background=on?t.border:'#1e1e1e';w.style.borderColor=on?t.border:'#333';});
+  document.querySelectorAll('.frostToggle').forEach(w=>{if(w.id==='autoSkipToggle'||w.id==='paymentPopupToggle')return;const key=w.dataset.key;if(!key||!settings[key])return;const on=settings[key].val;w.style.background=on?t.border:'#1e1e1e';w.style.borderColor=on?t.border:'#333';const k=w.querySelector('.frostKnob');if(k){k.style.left=on?'21px':'3px';k.style.background=on?'#fff':'#555';}});
   document.querySelectorAll('.tabBtn').forEach(b=>{const a=b.dataset.tab===activeTab;b.style.color=a?t.text:t.dim;b.style.borderBottom=a?`2px solid ${t.border}`:'2px solid transparent';b.style.background=a?t.header:'none';});
   document.querySelectorAll('.themeBtn').forEach(b=>{const active=themes[b.dataset.theme]===t;b.style.opacity=active?'1':'0.65';b.style.border=`1px solid ${themes[b.dataset.theme].border}${active?'':'55'}`;b.style.boxShadow=active?`0 0 12px ${themes[b.dataset.theme].border}44`:'';});
   document.querySelectorAll('.netSubBtn').forEach(b=>{const a=b.dataset.net===activeNetSubTab;b.style.color=a?t.text:t.dim;b.style.borderBottom=a?`2px solid ${t.border}`:'2px solid transparent';b.style.background=a?t.header:'none';});
@@ -1108,6 +978,7 @@ function applyTheme(t){
 
 // ---- Geo ----
 async function geoIP(ip,port,candType){
+  if(isPrivateIP(ip))return;
   if(!settings.showCloudflare.val&&isCloudflare(ip))return;
   if(!settings.showIPv6.val&&isIPv6(ip))return;
   try{
@@ -1116,67 +987,35 @@ async function geoIP(ip,port,candType){
     const privacyScore=d.privacy?.proxy||d.privacy?.vpn||false;
     const peerCountry=d.country||'?';
 
-    // Country targeting
-    if(targetCountry&&peerCountry!==targetCountry&&autoSkipEnabled){
-      logEvent('warning',`Auto-skipped non-target: ${ip} (${peerCountry})`);tryAutoSkip();return;
-    }
-    if(settings.autoSkipVPN.val&&typeRaw.includes('VPN')){
-      logEvent('warning',`Auto-skipped VPN: ${ip}`);tryAutoSkip();return;
-    }
+    if(targetCountry&&peerCountry!==targetCountry&&autoSkipEnabled){logEvent('warning',`Auto-skipped: ${ip} (${peerCountry})`);tryAutoSkip();return;}
+    if(settings.autoSkipVPN.val&&typeRaw.includes('VPN')){logEvent('warning',`Auto-skipped VPN: ${ip}`);tryAutoSkip();return;}
 
     const p={ip,port:port||'?',candType:candType||'?',label:isIPv6(ip)?'🔵 IPv6':'🟣 IPv4',type:isTor?'🧅 Tor':typeRaw,city:d.city||'?',region:d.region||'?',country:peerCountry,org:d.org||'Unknown',loc:d.loc||'?',postal:d.postal||'?',flag:d.country?`https://flagcdn.com/16x12/${d.country.toLowerCase()}.png`:'',time:new Date().toLocaleTimeString(),privacyScore,duration:null};
 
-    // ASN checks
-    const asnInfo=lookupASN(d.org);
-    const asnKey=d.org?.split(' ')[0];
+    const asnInfo=lookupASN(d.org);const asnKey=d.org?.split(' ')[0];
     if(asnInfo&&BAD_ASNS.has(asnKey)&&settings.showBadASN.val){
-      logEvent('danger',`⚠️ BAD ASN detected: ${ip} on ${asnInfo.name} (Risk: ${asnInfo.risk}/10)`);
+      logEvent('danger',`⚠️ BAD ASN: ${ip} on ${asnInfo.name} (Risk ${asnInfo.risk}/10)`);
       playBadASNSound();
-      if(settings.notifications.val&&Notification.permission==='granted')new Notification('⚠️ Bad ASN Detected',{body:`${ip} — ${asnInfo.name} (Risk ${asnInfo.risk}/10)`});
+      if(settings.notifications.val&&Notification.permission==='granted')new Notification('⚠️ Bad ASN',{body:`${ip} — ${asnInfo.name} (Risk ${asnInfo.risk}/10)`});
     }
-
-    // Subnet check
     const subnet=trackSubnet(ip,p);
-    if(subnet&&subnet.ips.length>1&&settings.showSubnetAlert.val){
-      logEvent('warning',`🕸️ /24 cluster: ${subnet.ips.length} IPs from ${subnet.subnet}`);
-    }
-
-    // Country stats
+    if(subnet&&subnet.ips.length>1&&settings.showSubnetAlert.val)logEvent('warning',`🕸️ /24 cluster: ${subnet.ips.length} IPs from ${subnet.subnet}`);
     if(peerCountry!=='?'){countryCollection.add(peerCountry);sessionStats.countries[peerCountry]=(sessionStats.countries[peerCountry]||0)+1;}
     sessionStats.total++;sessionStats.matches++;
-    if(isTor)sessionStats.tor++;
-    else if(typeRaw.includes('VPN'))sessionStats.vpn++;
-    else if(typeRaw.includes('Hosting'))sessionStats.hosting++;
-    else if(typeRaw.includes('Mobile'))sessionStats.mobile++;
-    else sessionStats.residential++;
-
+    if(isTor)sessionStats.tor++;else if(typeRaw.includes('VPN'))sessionStats.vpn++;else if(typeRaw.includes('Hosting'))sessionStats.hosting++;else if(typeRaw.includes('Mobile'))sessionStats.mobile++;else sessionStats.residential++;
     peerLog.push(p);saveHistory(ip);
     addToPanel(p);
     if(embeddedMode){addEmbedPeerCard(p);addEmbedMapMarker(p,true);}
-
     logEvent('success',`Peer: ${ip} — ${p.city}, ${p.country} | ${p.type} | Score: ${scoreConnection(p,asnInfo).score}/5`);
-
-    if(targetCountry&&peerCountry===targetCountry){
-      logEvent('success',`🎯 MATCH: ${ip} from ${COUNTRIES[peerCountry]||peerCountry}`);
-      playMatchSound();
-      if(settings.notifications.val&&Notification.permission==='granted')new Notification('🎯 Target Match!',{body:`${ip} — ${p.city}, ${p.country}`});
-    }
-
+    if(targetCountry&&peerCountry===targetCountry){logEvent('success',`🎯 MATCH: ${ip} from ${COUNTRIES[peerCountry]||peerCountry}`);playMatchSound();if(settings.notifications.val&&Notification.permission==='granted')new Notification('🎯 Target Match!',{body:`${ip} — ${p.city}, ${p.country}`});}
     if(settings.autoCopyNew.val)navigator.clipboard.writeText(ip).catch(()=>{});
     if(settings.soundAlert.val)playPing();
-    if(settings.notifications.val){
-      const body=`${ip} — ${p.city}, ${p.country} (${p.type})`;
-      if(Notification.permission==='granted')new Notification('🐉 Frosts Tools',{body});
-      else if(Notification.permission!=='denied')Notification.requestPermission().then(per=>{if(per==='granted')new Notification('🐉 Frosts Tools',{body});});
-    }
+    if(settings.notifications.val){const body=`${ip} — ${p.city}, ${p.country} (${p.type})`;if(Notification.permission==='granted')new Notification('🐉 Frosts Tools',{body});else if(Notification.permission!=='denied')Notification.requestPermission().then(per=>{if(per==='granted')new Notification('🐉 Frosts Tools',{body});});}
   }catch(e){console.warn('[FROST GEO FAILED]',ip);}
 }
 
 function tryAutoSkip(){
-  try{
-    const btn=[...document.querySelectorAll('button')].find(b=>b.textContent.toLowerCase().includes('skip')||b.textContent.toLowerCase().includes('next')||b.textContent==='Stop');
-    if(btn){btn.click();sessionStats.skips++;logEvent('info','Auto-skip triggered');}
-  }catch(e){}
+  try{const btn=[...document.querySelectorAll('button')].find(b=>b.textContent.toLowerCase().includes('skip')||b.textContent.toLowerCase().includes('next')||b.textContent==='Stop');if(btn){btn.click();sessionStats.skips++;logEvent('info','Auto-skip');}}catch(e){}
 }
 
 // ---- Embed ----
@@ -1227,8 +1066,7 @@ function setupEmbedMap(){
   el.innerHTML='';el.style.display='block';
   embedLeafletMap=L.map('embedMapEl',{zoomControl:false,attributionControl:false}).setView([20,0],2);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(embedLeafletMap);
-  peerLog.forEach(p=>addEmbedMapMarker(p,false));
-  if(peerLog.length>0)flyEmbedMap();
+  peerLog.forEach(p=>addEmbedMapMarker(p,false));if(peerLog.length>0)flyEmbedMap();
 }
 function addEmbedMapMarker(p,fly=true){
   if(!embedLeafletMap||!p.loc||p.loc==='?')return;
@@ -1272,7 +1110,7 @@ function addEmbedPeerCard(p){
     </div>
     <div style="color:${isTor?'#ff8800':color};font-size:11px;margin-bottom:3px;">${isTor?'🧅 Tor':p.type}</div>
     ${asnInfo&&settings.showASNInfo.val?`<div class="asn-badge" style="background:${riskColor}22;border-color:${riskColor}44;color:${riskColor};margin-bottom:4px;">🏢 ${asnInfo.name} • Risk ${asnInfo.risk}/10</div>`:''}
-    ${settings.showQualityScore.val?`<div style="margin-bottom:4px;"><span class="quality-stars" style="color:${riskColor};font-size:12px;">${renderStars(score)}</span> <span style="font-size:10px;color:${t.dim};">${score}/5</span></div>`:''}
+    ${settings.showQualityScore.val?`<div style="margin-bottom:4px;"><span style="color:${riskColor};font-size:12px;letter-spacing:1px;">${'★'.repeat(score)}${'☆'.repeat(5-score)}</span> <span style="font-size:10px;color:${t.dim};">${score}/5</span></div>`:''}
     <div style="color:${t.sub};font-size:11px;">📍 ${p.city}, ${p.region} ${p.country}</div>
     <div style="color:${t.sub};font-size:11px;margin-top:2px;">🏢 ${p.org}</div>
     <div style="color:${t.dim};font-size:10px;margin-top:3px;">🕐 ${p.time}</div>
@@ -1295,7 +1133,7 @@ function enableEmbedMode(){
   const btn=document.getElementById('ppEmbedBtn');btn.textContent='✅ Embedded';btn.style.background='linear-gradient(135deg,#003300,#005500)';btn.style.borderColor='#00ff88';
   const container=buildEmbedContainer();chatWindow.insertBefore(container,chatWindow.firstChild);
   document.getElementById('embedCopyAll').addEventListener('click',()=>{
-    const text=peerLog.map((p,i)=>{const asn=lookupASN(p.org);const{score}=scoreConnection(p,asn);return[`--- Peer #${i+1} ---`,`IP: ${p.ip}`,`Type: ${p.type}`,`ASN: ${asn?.name||'?'} (Risk ${asn?.risk||0}/10)`,`Quality: ${renderStars(score)} ${score}/5`,`City: ${p.city}, ${p.country}`,`ISP: ${p.org}`].join('\n');}).join('\n\n');
+    const text=peerLog.map((p,i)=>{const asn=lookupASN(p.org);const{score}=scoreConnection(p,asn);return[`--- Peer #${i+1} ---`,`IP: ${p.ip}`,`Type: ${p.type}`,`ASN: ${asn?.name||'?'} (Risk ${asn?.risk||0}/10)`,`Quality: ${score}/5`,`City: ${p.city}, ${p.country}`,`ISP: ${p.org}`].join('\n');}).join('\n\n');
     navigator.clipboard.writeText(text||'No peers yet').then(()=>{const b=document.getElementById('embedCopyAll');b.textContent='✅';setTimeout(()=>b.textContent='📋',1500);});
   });
   document.getElementById('embedClose').addEventListener('click',()=>{
@@ -1306,6 +1144,7 @@ function enableEmbedMode(){
   });
   initEmbedMap();applySiteTheme(currentTheme);
   peerLog.forEach(p=>{addEmbedPeerCard(p);addEmbedMapMarker(p,false);});
+  if(disablePaymentPopups)enablePaymentBlocker();
   logEvent('success','Embedded into site');closePanel();
 }
 document.getElementById('ppEmbedBtn').addEventListener('click',enableEmbedMode);
@@ -1324,12 +1163,9 @@ document.addEventListener('keydown',e=>{if(e.code==='Enter'&&e.target.classList.
 window.RTCPeerConnection=function(...args){
   const pc=new origPC(...args);activePC=pc;
   pc.addEventListener('connectionstatechange',()=>{
-    webrtcStats.state=pc.connectionState;
-    logEvent('info',`WebRTC: ${pc.connectionState}`);
+    webrtcStats.state=pc.connectionState;logEvent('info',`WebRTC: ${pc.connectionState}`);
     if(pc.connectionState==='connected')currentConvoStart=Date.now();
-    if(['disconnected','failed','closed'].includes(pc.connectionState)){
-      if(currentConvoStart){const dur=Date.now()-currentConvoStart;if(dur>sessionStats.longestConvo)sessionStats.longestConvo=dur;sessionStats.totalTime+=dur;currentConvoStart=null;logEvent('info',`Disconnected after ${formatDuration(dur)}`);}
-    }
+    if(['disconnected','failed','closed'].includes(pc.connectionState)){if(currentConvoStart){const dur=Date.now()-currentConvoStart;if(dur>sessionStats.longestConvo)sessionStats.longestConvo=dur;sessionStats.totalTime+=dur;currentConvoStart=null;logEvent('info',`Disconnected after ${formatDuration(dur)}`);}}
   });
   pc.addEventListener('icecandidate',e=>{
     if(e.candidate){totalPackets++;ppsCount++;
@@ -1338,24 +1174,24 @@ window.RTCPeerConnection=function(...args){
       else protocolCounts.TCP++;
       protocolCounts.WebRTC++;
       const ip=e.candidate.address||'';const port=e.candidate.port||0;
-      if(ip){const key=`${ip}:${port}`;if(!netConnections.has(key))netConnections.set(key,{remote:ip,port,protocol:e.candidate.protocol?.toUpperCase()||'UDP',packets:0,bytes:0,duration:0,started:Date.now(),lastSeen:new Date().toLocaleTimeString(),color:currentTheme.border});const conn=netConnections.get(key);conn.packets++;conn.bytes+=100;conn.lastSeen=new Date().toLocaleTimeString();conn.duration=Date.now()-conn.started;}
+      if(ip&&!isPrivateIP(ip)){const key=`${ip}:${port}`;if(!netConnections.has(key))netConnections.set(key,{remote:ip,port,protocol:e.candidate.protocol?.toUpperCase()||'UDP',packets:0,bytes:0,duration:0,started:Date.now(),lastSeen:new Date().toLocaleTimeString(),color:currentTheme.border});const conn=netConnections.get(key);conn.packets++;conn.bytes+=100;conn.lastSeen=new Date().toLocaleTimeString();conn.duration=Date.now()-conn.started;}
     }
   });
   setInterval(async()=>{
     const stats=await pc.getStats();
     stats.forEach(r=>{
-      if(r.type==='remote-candidate'&&r.address&&!seenIPs.has(r.address)){seenIPs.add(r.address);geoIP(r.address,r.port,r.candidateType);}
+      if(r.type==='remote-candidate'&&r.address&&!seenIPs.has(r.address)){
+        if(isPrivateIP(r.address))return;
+        if(r.candidateType==='host'&&!r.address.includes(':'))return;
+        seenIPs.add(r.address);geoIP(r.address,r.port,r.candidateType);
+      }
       if(r.type==='inbound-rtp'||r.type==='outbound-rtp'){totalPackets++;ppsCount++;totalBytes+=r.bytesReceived||r.bytesSent||0;}
     });
   },2000);
   return pc;
 };
 
-// Initialize payment popup blocker if enabled
-if(disablePaymentPopups){
-  initPaymentPopupBlocker();
-}
-
+if(disablePaymentPopups)enablePaymentBlocker();
 applyTheme(currentTheme);
 if(settings.snapToEdge.val)applySnap();
 logEvent('success','Frosts Tools v0.2.2 ready');
