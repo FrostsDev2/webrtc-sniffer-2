@@ -1,978 +1,293 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Frosts Tools | Umingle </title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+(() => {
 
-  :root {
-    --bg:       #0A0A0F;
-    --surface:  #13111E;
-    --card:     #1C1A2E;
-    --border:   #2D2B45;
-    --accent:   #7C3AED;
-    --accent-hi: #9F5FFF;
-    --stop:     #FF4D6D;
-    --text:     #E8E6F0;
-    --muted:    #8A87A6;
-    --online:   #22D3A5;
-    --font-ui:  'Space Grotesk', sans-serif;
-    --font-body:'Inter', sans-serif;
-    --r:        12px;
-    --r-sm:     8px;
-  }
+  // ── FONTS ──
+  const font = document.createElement('link');
+  font.rel = 'stylesheet';
+  font.href = 'https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500&display=swap';
+  document.head.appendChild(font);
 
-  html, body {
-    height: 100%;
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font-ui);
-    overflow: hidden;
-  }
+  // ── STYLES ──
+  const existing = document.getElementById('frosts-reskin');
+  if (existing) existing.remove();
 
-  /* ── HEADER ── */
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 20px;
-    height: 58px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    z-index: 100;
-  }
+  const style = document.createElement('style');
+  style.id = 'frosts-reskin';
+  style.textContent = `
+    *, *::before, *::after { box-sizing: border-box !important; }
 
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    text-decoration: none;
-    color: var(--text);
-  }
-  .logo-mark {
-    width: 32px; height: 32px;
-    background: var(--accent);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .logo-mark svg { width: 18px; height: 18px; }
-  .logo-name {
-    font-size: 1.1rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-  }
-
-  .header-right {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-  }
-  .online-count {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.85rem;
-    color: var(--muted);
-    font-family: var(--font-body);
-  }
-  .online-dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: var(--online);
-    box-shadow: 0 0 0 2px rgba(34,211,165,0.25);
-    animation: pulse 2s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    0%,100% { box-shadow: 0 0 0 2px rgba(34,211,165,0.25); }
-    50% { box-shadow: 0 0 0 5px rgba(34,211,165,0.08); }
-  }
-  .online-num { color: var(--text); font-weight: 600; }
-
-  .icon-btn {
-    background: none;
-    border: 1px solid var(--border);
-    color: var(--muted);
-    padding: 6px 10px;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-family: var(--font-ui);
-    cursor: pointer;
-    transition: border-color 0.15s, color 0.15s;
-    display: flex; align-items: center; gap: 5px;
-  }
-  .icon-btn:hover { border-color: var(--accent); color: var(--text); }
-  .icon-btn svg { width: 14px; height: 14px; }
-
-  /* ── MAIN LAYOUT ── */
-  main {
-    display: grid;
-    grid-template-columns: 1fr 380px;
-    grid-template-rows: 1fr;
-    height: calc(100vh - 58px);
-    margin-top: 58px;
-    gap: 0;
-  }
-
-  /* ── VIDEO AREA ── */
-  .video-area {
-    display: flex;
-    flex-direction: column;
-    background: var(--bg);
-    border-right: 1px solid var(--border);
-    position: relative;
-  }
-
-  .video-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    padding: 12px 12px 0;
-    flex: 1;
-    min-height: 0;
-  }
-
-  .video-wrapper {
-    position: relative;
-    background: var(--card);
-    border-radius: var(--r);
-    overflow: hidden;
-    aspect-ratio: 4/3;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .video-wrapper video {
-    width: 100%; height: 100%;
-    object-fit: cover;
-    transform: scaleX(-1);
-  }
-  .video-label {
-    position: absolute;
-    bottom: 10px; left: 12px;
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.7);
-    background: rgba(0,0,0,0.4);
-    backdrop-filter: blur(6px);
-    padding: 3px 8px;
-    border-radius: 4px;
-  }
-
-  /* Pulse ring on remote video when connected */
-  .video-wrapper.remote::before {
-    content: '';
-    position: absolute;
-    inset: -3px;
-    border-radius: calc(var(--r) + 3px);
-    border: 2px solid var(--accent);
-    opacity: 0;
-    transition: opacity 0.4s;
-    pointer-events: none;
-    z-index: 2;
-  }
-  .video-wrapper.remote.connected::before {
-    opacity: 0.6;
-    animation: ring-pulse 3s ease-in-out infinite;
-  }
-  @keyframes ring-pulse {
-    0%,100% { opacity: 0.4; box-shadow: 0 0 0 0 rgba(124,58,237,0); }
-    50% { opacity: 0.8; box-shadow: 0 0 20px 4px rgba(124,58,237,0.3); }
-  }
-
-  .video-placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    color: var(--muted);
-  }
-  .video-placeholder svg { width: 40px; height: 40px; opacity: 0.4; }
-  .video-placeholder span { font-size: 0.85rem; }
-
-  .report-btn {
-    position: absolute;
-    top: 10px; right: 10px;
-    background: rgba(0,0,0,0.4);
-    border: none;
-    color: rgba(255,255,255,0.5);
-    width: 30px; height: 30px;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    backdrop-filter: blur(6px);
-    transition: color 0.15s, background 0.15s;
-    z-index: 3;
-  }
-  .report-btn:hover { color: var(--stop); background: rgba(255,77,109,0.15); }
-  .report-btn svg { width: 14px; height: 14px; }
-
-  /* ── RULES BANNER ── */
-  .rules-banner {
-    margin: 8px 12px;
-    background: rgba(124,58,237,0.08);
-    border: 1px solid rgba(124,58,237,0.2);
-    border-radius: var(--r-sm);
-    padding: 8px 14px;
-    font-size: 0.78rem;
-    color: var(--muted);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .rules-banner span { display: flex; align-items: center; gap: 4px; }
-
-  /* ── CONTROLS ── */
-  .controls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    border-top: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .btn-start {
-    flex: 1;
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    border-radius: var(--r-sm);
-    padding: 12px 20px;
-    font-family: var(--font-ui);
-    font-size: 0.95rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s, transform 0.1s;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-  }
-  .btn-start:hover { background: var(--accent-hi); }
-  .btn-start:active { transform: scale(0.98); }
-  .btn-start svg { width: 16px; height: 16px; }
-
-  .btn-stop {
-    background: rgba(255,77,109,0.12);
-    border: 1px solid rgba(255,77,109,0.35);
-    color: var(--stop);
-    border-radius: var(--r-sm);
-    padding: 12px 16px;
-    font-family: var(--font-ui);
-    font-size: 0.9rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s;
-    display: flex; align-items: center; gap: 6px;
-  }
-  .btn-stop:hover { background: rgba(255,77,109,0.2); }
-  .btn-stop svg { width: 14px; height: 14px; }
-
-  .btn-icon {
-    background: var(--card);
-    border: 1px solid var(--border);
-    color: var(--muted);
-    border-radius: var(--r-sm);
-    width: 44px; height: 44px;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    transition: border-color 0.15s, color 0.15s, background 0.15s;
-    flex-shrink: 0;
-  }
-  .btn-icon:hover { border-color: var(--accent); color: var(--text); }
-  .btn-icon.active { background: rgba(124,58,237,0.15); border-color: var(--accent); color: var(--accent); }
-  .btn-icon svg { width: 18px; height: 18px; }
-
-  /* ── SIDEBAR / CHAT ── */
-  .sidebar {
-    display: flex;
-    flex-direction: column;
-    background: var(--surface);
-    min-height: 0;
-  }
-
-  /* Settings tabs */
-  .sidebar-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .sidebar-tab {
-    flex: 1;
-    padding: 12px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    text-align: center;
-    color: var(--muted);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    transition: color 0.15s, border-color 0.15s;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-  .sidebar-tab.active {
-    color: var(--text);
-    border-color: var(--accent);
-  }
-
-  /* Settings panel */
-  .panel {
-    display: none;
-    flex-direction: column;
-    gap: 16px;
-    padding: 16px;
-    overflow-y: auto;
-    flex: 1;
-  }
-  .panel.active { display: flex; }
-
-  .setting-group label {
-    display: block;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 8px;
-  }
-
-  .interest-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .tag {
-    padding: 5px 11px;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    font-size: 0.8rem;
-    color: var(--muted);
-    cursor: pointer;
-    transition: border-color 0.15s, color 0.15s, background 0.15s;
-    user-select: none;
-  }
-  .tag:hover { border-color: var(--accent-hi); color: var(--text); }
-  .tag.selected { border-color: var(--accent); color: var(--accent); background: rgba(124,58,237,0.12); }
-  .tag.active-tag { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-  .country-select {
-    width: 100%;
-    background: var(--card);
-    border: 1px solid var(--border);
-    color: var(--text);
-    border-radius: var(--r-sm);
-    padding: 9px 12px;
-    font-family: var(--font-body);
-    font-size: 0.85rem;
-    outline: none;
-    cursor: pointer;
-    transition: border-color 0.15s;
-  }
-  .country-select:focus { border-color: var(--accent); }
-
-  .toggle-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .toggle-label {
-    font-size: 0.85rem;
-    color: var(--text);
-    font-family: var(--font-body);
-  }
-  .toggle-label small { display: block; font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
-  .toggle {
-    width: 40px; height: 22px;
-    background: var(--border);
-    border-radius: 999px;
-    position: relative;
-    cursor: pointer;
-    transition: background 0.2s;
-    flex-shrink: 0;
-    border: none;
-    outline: none;
-  }
-  .toggle.on { background: var(--accent); }
-  .toggle::after {
-    content: '';
-    position: absolute;
-    width: 16px; height: 16px;
-    background: #fff;
-    border-radius: 50%;
-    top: 3px; left: 3px;
-    transition: left 0.2s;
-  }
-  .toggle.on::after { left: 21px; }
-
-  /* Chat panel */
-  #chat-panel {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-  }
-
-  .chat-messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 14px 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    font-family: var(--font-body);
-  }
-  .chat-messages::-webkit-scrollbar { width: 4px; }
-  .chat-messages::-webkit-scrollbar-track { background: transparent; }
-  .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-
-  .msg {
-    max-width: 80%;
-    padding: 8px 12px;
-    border-radius: 10px;
-    font-size: 0.88rem;
-    line-height: 1.45;
-    word-break: break-word;
-  }
-  .msg-you {
-    background: var(--accent);
-    color: #fff;
-    align-self: flex-end;
-    border-bottom-right-radius: 3px;
-  }
-  .msg-stranger {
-    background: var(--card);
-    color: var(--text);
-    align-self: flex-start;
-    border-bottom-left-radius: 3px;
-  }
-  .msg-info {
-    font-size: 0.75rem;
-    color: var(--muted);
-    text-align: center;
-    padding: 4px 0;
-    align-self: center;
-    font-style: italic;
-  }
-
-  .rules-msg {
-    background: rgba(124,58,237,0.08);
-    border: 1px solid rgba(124,58,237,0.15);
-    border-radius: var(--r-sm);
-    padding: 12px;
-    font-size: 0.8rem;
-    color: var(--muted);
-    line-height: 1.55;
-  }
-  .rules-msg .rule { display: flex; gap: 6px; margin-bottom: 4px; }
-  .rules-msg .rule:last-child { margin-bottom: 0; }
-
-  /* Country info badge */
-  .country-badge {
-    display: none;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.78rem;
-    color: var(--muted);
-    padding: 0 16px 8px;
-    font-family: var(--font-body);
-  }
-  .country-badge.visible { display: flex; }
-  .flag { font-size: 1rem; }
-
-  /* Typing indicator */
-  .typing-indicator {
-    padding: 0 16px 8px;
-    font-size: 0.78rem;
-    color: var(--muted);
-    font-style: italic;
-    display: none;
-    font-family: var(--font-body);
-  }
-
-  /* Input bar */
-  .input-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 12px;
-    border-top: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-  .input-bar textarea {
-    flex: 1;
-    background: var(--card);
-    border: 1px solid var(--border);
-    color: var(--text);
-    border-radius: var(--r-sm);
-    padding: 9px 12px;
-    font-family: var(--font-body);
-    font-size: 0.88rem;
-    resize: none;
-    outline: none;
-    line-height: 1.4;
-    max-height: 100px;
-    transition: border-color 0.15s;
-  }
-  .input-bar textarea:focus { border-color: var(--accent); }
-  .input-bar textarea::placeholder { color: var(--muted); }
-  .send-btn {
-    background: var(--accent);
-    border: none;
-    color: #fff;
-    width: 38px; height: 38px;
-    border-radius: var(--r-sm);
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    transition: background 0.15s;
-    flex-shrink: 0;
-  }
-  .send-btn:hover { background: var(--accent-hi); }
-  .send-btn svg { width: 16px; height: 16px; }
-  .emoji-btn {
-    background: none;
-    border: none;
-    color: var(--muted);
-    font-size: 1.2rem;
-    cursor: pointer;
-    padding: 4px;
-    transition: color 0.15s;
-    flex-shrink: 0;
-  }
-  .emoji-btn:hover { color: var(--text); }
-
-  /* Status message overlay */
-  .status-overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(10,10,15,0.7);
-    backdrop-filter: blur(6px);
-    border-radius: var(--r);
-    z-index: 5;
-    flex-direction: column;
-    gap: 10px;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.3s;
-  }
-  .status-overlay.visible { opacity: 1; pointer-events: auto; }
-  .status-text {
-    font-size: 0.9rem;
-    color: var(--muted);
-    font-family: var(--font-body);
-  }
-  .spinner {
-    width: 28px; height: 28px;
-    border: 2px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  /* Premium badge */
-  .premium-nudge {
-    margin: 0 16px 12px;
-    background: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(159,95,255,0.05));
-    border: 1px solid rgba(124,58,237,0.2);
-    border-radius: var(--r-sm);
-    padding: 10px 14px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
-  .premium-nudge-text { font-size: 0.78rem; color: var(--muted); line-height: 1.4; }
-  .premium-nudge-text strong { color: var(--accent-hi); display: block; margin-bottom: 2px; font-size: 0.82rem; }
-  .btn-premium {
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    border-radius: 6px;
-    padding: 7px 14px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    font-family: var(--font-ui);
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background 0.15s;
-    flex-shrink: 0;
-  }
-  .btn-premium:hover { background: var(--accent-hi); }
-
-  /* Age warning */
-  .age-warn {
-    font-size: 0.78rem;
-    color: var(--stop);
-    font-weight: 600;
-    letter-spacing: 0.03em;
-  }
-
-  /* ── RESPONSIVE ── */
-  @media (max-width: 800px) {
-    html, body { overflow: auto; }
-    main {
-      grid-template-columns: 1fr;
-      grid-template-rows: auto 1fr;
-      height: auto;
+    html, body {
+      background: #0A0A0F !important;
+      color: #E8E6F0 !important;
+      font-family: 'Space Grotesk', sans-serif !important;
     }
-    .video-area { border-right: none; border-bottom: 1px solid var(--border); }
-    .video-grid { grid-template-columns: 1fr; }
-    .video-wrapper { aspect-ratio: 16/9; }
-    .sidebar { height: 60vh; }
-  }
-</style>
-</head>
-<body>
 
-<!-- HEADER -->
-<header>
-  <a class="logo" href="#">
-    <div class="logo-mark">
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M8 12C8 9.8 9.8 8 12 8C14.2 8 16 9.8 16 12C16 14.2 14.2 16 12 16C9.8 16 8 14.2 8 12Z" fill="white"/>
-        <path d="M4 6C4 4.9 4.9 4 6 4H18C19.1 4 20 4.9 20 6V14C20 15.1 19.1 16 18 16H16L12 20L8 16H6C4.9 16 4 15.1 4 14V6Z" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
-      </svg>
-    </div>
-    <span class="logo-name">Frosts Tools | Umingle</span>
-  </a>
-  <div class="header-right">
-    <div class="online-count">
-      <div class="online-dot"></div>
-      <span class="online-num">10,989</span>
-      <span>online</span>
-    </div>
-    <button class="icon-btn" onclick="toggleDark()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-      Theme
-    </button>
-  </div>
-</header>
+    /* Hide Umingle's own header/logo */
+    header, nav, .navbar, [class*="header"]:not(#frosts-header),
+    [class*="nav-bar"], a[href="/"].logo, .brand { display: none !important; }
 
-<!-- MAIN -->
-<main>
-
-  <!-- VIDEO + CONTROLS -->
-  <div class="video-area">
-
-    <div class="video-grid">
-      <!-- Remote video -->
-      <div class="video-wrapper remote" id="remoteWrapper">
-        <div class="video-placeholder" id="remotePlaceholder">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 20H7a2 2 0 01-2-2V8a2 2 0 012-2h2l2-2h2l2 2h2a2 2 0 012 2v10a2 2 0 01-2 2z"/><circle cx="12" cy="13" r="3"/></svg>
-          <span>Waiting for stranger…</span>
-        </div>
-        <video id="remoteVideo" playsinline autoplay hidden></video>
-        <span class="video-label">Stranger</span>
-        <button class="report-btn" title="Report">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.3 5.7a1 1 0 00-.7-.3H6.5L5.8 3.4A1 1 0 004.9 3H3a1 1 0 000 2h1.2l4.5 12.6A2 2 0 0010.6 19H18a1 1 0 00.9-.6l3-7A1 1 0 0021 10H7.6L6.5 7h12.1a1 1 0 00.7-1.7z"/></svg>
-        </button>
-        <div class="status-overlay visible" id="statusOverlay">
-          <div class="spinner" id="statusSpinner" style="display:none"></div>
-          <span class="status-text" id="statusText">Click Start to meet someone</span>
-        </div>
-      </div>
-
-      <!-- Local video -->
-      <div class="video-wrapper local">
-        <div class="video-placeholder" id="localPlaceholder">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-          <span>Camera off</span>
-        </div>
-        <video id="localVideo" playsinline autoplay muted hidden></video>
-        <span class="video-label">You</span>
-      </div>
-    </div>
-
-    <div class="rules-banner">
-      <span class="age-warn">🔞 18+ only</span>
-      <span>· No nudity or hate speech</span>
-      <span>· Show your face on camera</span>
-      <span>· Not a dating site</span>
-    </div>
-
-    <div class="controls">
-      <button class="btn-start" id="startBtn" onclick="handleStart()">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        Start
-      </button>
-      <button class="btn-stop" id="stopBtn" style="display:none" onclick="handleStop()">
-        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-        Stop
-      </button>
-      <button class="btn-icon" title="Mute mic" onclick="this.classList.toggle('active')" id="micBtn">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-      </button>
-      <button class="btn-icon" title="Camera" onclick="this.classList.toggle('active')" id="camBtn">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-      </button>
-      <button class="btn-icon" title="Flip camera">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
-      </button>
-    </div>
-  </div>
-
-  <!-- SIDEBAR -->
-  <div class="sidebar">
-    <div class="sidebar-tabs">
-      <div class="sidebar-tab active" onclick="switchTab(this,'chat-panel')">Chat</div>
-      <div class="sidebar-tab" onclick="switchTab(this,'settings-panel')">Settings</div>
-      <div class="sidebar-tab" onclick="switchTab(this,'log-panel')">History</div>
-    </div>
-
-    <!-- CHAT PANEL -->
-    <div id="chat-panel" class="panel active" style="padding:0; gap:0;">
-      <div class="chat-messages" id="chatMessages">
-        <div class="rules-msg">
-          <div class="rule">🔞 <span>You must be 18 or older</span></div>
-          <div class="rule">🚫 <span>No nudity, hate speech, or harassment</span></div>
-          <div class="rule">📷 <span>Your webcam must show your face live</span></div>
-          <div class="rule">❌ <span>Violators will be banned</span></div>
-        </div>
-      </div>
-      <div class="country-badge" id="countryBadge">
-        <span class="flag">🇺🇸</span>
-        <span id="countryName">United States</span>
-      </div>
-      <div class="typing-indicator" id="typingIndicator">Stranger is typing…</div>
-      <div class="premium-nudge">
-        <div class="premium-nudge-text">
-          <strong>⚡ Go Premium</strong>
-          Skip faster, match by interest &amp; region
-        </div>
-        <button class="btn-premium">Upgrade</button>
-      </div>
-      <div class="input-bar">
-        <button class="emoji-btn" title="Emoji">😊</button>
-        <textarea id="msgInput" rows="1" placeholder="Say something…" onkeydown="handleKey(event)"></textarea>
-        <button class="send-btn" onclick="sendMessage()">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2 21l21-9L2 3v7l15 2-15 2z"/></svg>
-        </button>
-      </div>
-    </div>
-
-    <!-- SETTINGS PANEL -->
-    <div id="settings-panel" class="panel" style="overflow-y:auto;">
-
-      <div class="setting-group">
-        <label>Interests (match with people who share these)</label>
-        <div class="interest-tags" id="interestTags">
-          <span class="tag" onclick="toggleTag(this)">🎮 Gaming</span>
-          <span class="tag" onclick="toggleTag(this)">🎵 Music</span>
-          <span class="tag" onclick="toggleTag(this)">🎨 Art</span>
-          <span class="tag" onclick="toggleTag(this)">🏋️ Fitness</span>
-          <span class="tag" onclick="toggleTag(this)">📚 Books</span>
-          <span class="tag" onclick="toggleTag(this)">💻 Tech</span>
-          <span class="tag" onclick="toggleTag(this)">🌍 Travel</span>
-          <span class="tag" onclick="toggleTag(this)">🐾 Pets</span>
-          <span class="tag" onclick="toggleTag(this)">🍕 Food</span>
-          <span class="tag" onclick="toggleTag(this)">🎬 Movies</span>
-          <span class="tag" onclick="toggleTag(this)">🧠 Science</span>
-          <span class="tag" onclick="toggleTag(this)">💃 Dance</span>
-        </div>
-      </div>
-
-      <div class="setting-group">
-        <label>Country preference</label>
-        <select class="country-select">
-          <option value="">Any country</option>
-          <option value="US">🇺🇸 United States</option>
-          <option value="UK">🇬🇧 United Kingdom</option>
-          <option value="CA">🇨🇦 Canada</option>
-          <option value="AU">🇦🇺 Australia</option>
-          <option value="DE">🇩🇪 Germany</option>
-          <option value="FR">🇫🇷 France</option>
-          <option value="IN">🇮🇳 India</option>
-          <option value="BR">🇧🇷 Brazil</option>
-          <option value="JP">🇯🇵 Japan</option>
-          <option value="KR">🇰🇷 South Korea</option>
-        </select>
-      </div>
-
-      <div class="setting-group" style="display:flex;flex-direction:column;gap:12px;">
-        <label>Preferences</label>
-
-        <div class="toggle-row">
-          <div class="toggle-label">
-            Interest matching
-            <small>Only connect with shared interests</small>
-          </div>
-          <button class="toggle on" onclick="this.classList.toggle('on')"></button>
-        </div>
-
-        <div class="toggle-row">
-          <div class="toggle-label">
-            Face detection required
-            <small>Disconnect if no face detected</small>
-          </div>
-          <button class="toggle" onclick="this.classList.toggle('on')"></button>
-        </div>
-
-        <div class="toggle-row">
-          <div class="toggle-label">
-            Auto-skip offensive content
-            <small>AI-powered moderation</small>
-          </div>
-          <button class="toggle on" onclick="this.classList.toggle('on')"></button>
-        </div>
-
-        <div class="toggle-row">
-          <div class="toggle-label">
-            Text-only mode
-            <small>Chat without video</small>
-          </div>
-          <button class="toggle" onclick="this.classList.toggle('on')"></button>
-        </div>
-      </div>
-
-      <div class="setting-group">
-        <label>Camera &amp; mic</label>
-        <select class="country-select" style="margin-bottom:8px;">
-          <option>Integrated Webcam</option>
-        </select>
-        <select class="country-select">
-          <option>Default Microphone</option>
-        </select>
-      </div>
-
-    </div>
-
-    <!-- HISTORY PANEL -->
-    <div id="log-panel" class="panel" style="overflow-y:auto;">
-      <div style="text-align:center; color:var(--muted); font-size:0.85rem; padding:30px 0;">
-        <svg style="width:36px;height:36px;opacity:0.3;display:block;margin:0 auto 10px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-        No conversations yet.<br>Start chatting to see your history here.
-      </div>
-    </div>
-
-  </div>
-</main>
-
-<script>
-  // ── Simple UI logic ──
-
-  let started = false;
-  let connected = false;
-
-  function handleStart() {
-    if (!started) {
-      started = true;
-      document.getElementById('startBtn').style.display = 'none';
-      document.getElementById('stopBtn').style.display = '';
-      // Show searching state
-      document.getElementById('statusSpinner').style.display = '';
-      document.getElementById('statusText').textContent = 'Finding someone…';
-
-      // Simulate connection after 2s
-      setTimeout(() => {
-        connected = true;
-        document.getElementById('statusOverlay').classList.remove('visible');
-        document.getElementById('remoteWrapper').classList.add('connected');
-        addMsg('info', '✓ Connected to a stranger');
-        document.getElementById('countryBadge').classList.add('visible');
-        // Start button becomes "Next" when connected
-        document.getElementById('startBtn').textContent = '⏩ Next';
-        document.getElementById('startBtn').style.display = '';
-      }, 2000);
-    } else if (connected) {
-      // Skip to next
-      handleSkip();
+    /* ── FROSTS HEADER ── */
+    #frosts-header {
+      position: fixed !important;
+      top: 0; left: 0; right: 0 !important;
+      height: 58px !important;
+      background: #13111E !important;
+      border-bottom: 1px solid #2D2B45 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      padding: 0 20px !important;
+      z-index: 999999 !important;
+      font-family: 'Space Grotesk', sans-serif !important;
     }
-  }
-
-  function handleStop() {
-    started = false;
-    connected = false;
-    document.getElementById('stopBtn').style.display = 'none';
-    document.getElementById('startBtn').style.display = '';
-    document.getElementById('startBtn').innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px"><path d="M8 5v14l11-7z"/></svg> Start';
-    document.getElementById('statusSpinner').style.display = 'none';
-    document.getElementById('statusText').textContent = 'Click Start to meet someone';
-    document.getElementById('statusOverlay').classList.add('visible');
-    document.getElementById('remoteWrapper').classList.remove('connected');
-    document.getElementById('countryBadge').classList.remove('visible');
-    addMsg('info', 'Disconnected');
-  }
-
-  function handleSkip() {
-    document.getElementById('remoteWrapper').classList.remove('connected');
-    document.getElementById('countryBadge').classList.remove('visible');
-    document.getElementById('statusSpinner').style.display = '';
-    document.getElementById('statusText').textContent = 'Finding someone…';
-    document.getElementById('statusOverlay').classList.add('visible');
-    addMsg('info', 'Skipped · Finding next person…');
-    setTimeout(() => {
-      document.getElementById('statusOverlay').classList.remove('visible');
-      document.getElementById('remoteWrapper').classList.add('connected');
-      addMsg('info', '✓ Connected to a new stranger');
-      document.getElementById('countryBadge').classList.add('visible');
-    }, 1500);
-  }
-
-  function addMsg(type, text) {
-    const c = document.getElementById('chatMessages');
-    const el = document.createElement('div');
-    if (type === 'you') el.className = 'msg msg-you';
-    else if (type === 'stranger') el.className = 'msg msg-stranger';
-    else el.className = 'msg-info';
-    el.textContent = text;
-    c.appendChild(el);
-    c.scrollTop = c.scrollHeight;
-  }
-
-  function sendMessage() {
-    const inp = document.getElementById('msgInput');
-    const val = inp.value.trim();
-    if (!val) return;
-    addMsg('you', val);
-    inp.value = '';
-    inp.style.height = '';
-  }
-
-  function handleKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
+    #frosts-header .fh-logo {
+      display: flex !important; align-items: center !important; gap: 10px !important;
+      text-decoration: none !important; color: #E8E6F0 !important;
     }
-  }
+    #frosts-header .fh-mark {
+      width: 32px; height: 32px !important;
+      background: #7C3AED !important; border-radius: 8px !important;
+      display: flex !important; align-items: center !important; justify-content: center !important;
+    }
+    #frosts-header .fh-mark svg { width: 18px !important; height: 18px !important; }
+    #frosts-header .fh-name {
+      font-size: 1.1rem !important; font-weight: 700 !important;
+      letter-spacing: -0.02em !important; color: #E8E6F0 !important;
+    }
+    #frosts-header .fh-right {
+      display: flex !important; align-items: center !important; gap: 14px !important;
+    }
+    #frosts-header .fh-online {
+      display: flex !important; align-items: center !important; gap: 6px !important;
+      font-size: 0.85rem !important; color: #8A87A6 !important;
+      font-family: 'Inter', sans-serif !important;
+    }
+    #frosts-header .fh-dot {
+      width: 7px; height: 7px !important; border-radius: 50% !important;
+      background: #22D3A5 !important;
+      box-shadow: 0 0 0 2px rgba(34,211,165,0.25) !important;
+      animation: fh-pulse 2s ease-in-out infinite !important;
+      flex-shrink: 0 !important;
+    }
+    @keyframes fh-pulse {
+      0%,100% { box-shadow: 0 0 0 2px rgba(34,211,165,0.25); }
+      50%      { box-shadow: 0 0 0 5px rgba(34,211,165,0.08); }
+    }
+    #frosts-header .fh-num { color: #E8E6F0 !important; font-weight: 600 !important; }
 
-  function switchTab(el, panelId) {
-    document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    el.classList.add('active');
-    document.getElementById(panelId).classList.add('active');
-  }
+    /* Push all page content below header */
+    body > *:not(#frosts-header):not(script):not(style):not(link) {
+      margin-top: 58px !important;
+    }
 
-  function toggleTag(el) {
-    el.classList.toggle('selected');
-  }
+    /* ── BACKGROUNDS ── */
+    body, div, section, main, aside, article, form,
+    [class*="container"], [class*="wrapper"], [class*="layout"],
+    [class*="page"], [class*="inner"], [class*="content"],
+    [class*="bg-"], [class*="background"] {
+      background-color: #0A0A0F !important;
+      color: #E8E6F0 !important;
+    }
 
-  // Auto-resize textarea
-  document.getElementById('msgInput').addEventListener('input', function() {
-    this.style.height = 'auto';
-    this.style.height = Math.min(this.scrollHeight, 100) + 'px';
-  });
+    /* Slightly lifted surfaces */
+    [class*="card"], [class*="panel"], [class*="sidebar"],
+    [class*="chat"], [class*="controls"], [class*="toolbar"],
+    [class*="modal"]:not([style*="display: none"]),
+    [class*="box"], [class*="section"] {
+      background: #13111E !important;
+      border-color: #2D2B45 !important;
+      color: #E8E6F0 !important;
+    }
 
-  // Dark/light toggle (already dark — just demo the logic)
-  let isDark = true;
-  function toggleDark() {
-    isDark = !isDark;
-    document.documentElement.style.setProperty('--bg', isDark ? '#0A0A0F' : '#F4F2FF');
-    document.documentElement.style.setProperty('--surface', isDark ? '#13111E' : '#FFFFFF');
-    document.documentElement.style.setProperty('--card', isDark ? '#1C1A2E' : '#F0EEF8');
-    document.documentElement.style.setProperty('--border', isDark ? '#2D2B45' : '#D6D3E8');
-    document.documentElement.style.setProperty('--text', isDark ? '#E8E6F0' : '#1A1830');
-    document.documentElement.style.setProperty('--muted', isDark ? '#8A87A6' : '#6B6890');
-  }
-</script>
-</body>
-</html>
+    /* ── VIDEO ── */
+    video {
+      border-radius: 12px !important;
+      background: #1C1A2E !important;
+    }
+    [class*="video"], [class*="cam"], [id*="video"], [id*="cam"],
+    [class*="local"], [class*="remote"], [class*="stream"] {
+      background: #1C1A2E !important;
+      border-radius: 12px !important;
+      border: 1px solid #2D2B45 !important;
+    }
+
+    /* ── BUTTONS ── */
+    button, [class*="btn"], [class*="button"] {
+      font-family: 'Space Grotesk', sans-serif !important;
+      border-radius: 8px !important;
+      font-weight: 600 !important;
+      cursor: pointer !important;
+      transition: background 0.15s !important;
+    }
+
+    /* Start / Skip / Next */
+    [class*="start"], [class*="skip"], [class*="next"],
+    button[id*="start"], button[id*="skip"] {
+      background: #7C3AED !important;
+      color: #fff !important;
+      border: none !important;
+      padding: 11px 24px !important;
+    }
+    [class*="start"]:hover, [class*="skip"]:hover, [class*="next"]:hover {
+      background: #9F5FFF !important;
+    }
+
+    /* Stop / disconnect */
+    [class*="stop"], [class*="disconnect"], [class*="end"],
+    button[id*="stop"] {
+      background: rgba(255,77,109,0.12) !important;
+      border: 1px solid rgba(255,77,109,0.35) !important;
+      color: #FF4D6D !important;
+      padding: 10px 18px !important;
+    }
+    [class*="stop"]:hover { background: rgba(255,77,109,0.22) !important; }
+
+    /* Report / ban */
+    [class*="report"], [class*="ban"], [class*="flag"] {
+      background: transparent !important;
+      border: 1px solid #2D2B45 !important;
+      color: #8A87A6 !important;
+    }
+    [class*="report"]:hover, [class*="ban"]:hover {
+      border-color: #FF4D6D !important; color: #FF4D6D !important;
+    }
+
+    /* ── INPUTS ── */
+    input, textarea, select {
+      background: #1C1A2E !important;
+      border: 1px solid #2D2B45 !important;
+      color: #E8E6F0 !important;
+      border-radius: 8px !important;
+      padding: 9px 12px !important;
+      font-family: 'Inter', sans-serif !important;
+      outline: none !important;
+    }
+    input:focus, textarea:focus, select:focus {
+      border-color: #7C3AED !important;
+      box-shadow: 0 0 0 3px rgba(124,58,237,0.15) !important;
+    }
+    input::placeholder, textarea::placeholder { color: #8A87A6 !important; }
+    select option { background: #1C1A2E !important; color: #E8E6F0 !important; }
+
+    /* ── CHAT MESSAGES ── */
+    [class*="message"], [class*="msg"] {
+      background: #1C1A2E !important;
+      border-radius: 10px !important;
+      color: #E8E6F0 !important;
+      font-family: 'Inter', sans-serif !important;
+      font-size: 0.87rem !important;
+      border-color: #2D2B45 !important;
+    }
+
+    /* ── BADGES / TAGS / STATUS ── */
+    [class*="country"], [class*="badge"], [class*="status"],
+    [class*="online-count"], [class*="count"] {
+      background: rgba(124,58,237,0.1) !important;
+      border: 1px solid rgba(124,58,237,0.2) !important;
+      border-radius: 999px !important;
+      color: #9F5FFF !important;
+      font-size: 0.78rem !important;
+      padding: 3px 10px !important;
+    }
+
+    /* ── RULES / NOTICE BANNERS ── */
+    [class*="rule"], [class*="notice"], [class*="info-bar"],
+    [class*="disclaimer"] {
+      background: rgba(124,58,237,0.07) !important;
+      border: 1px solid rgba(124,58,237,0.18) !important;
+      border-radius: 8px !important;
+      color: #8A87A6 !important;
+      font-size: 0.79rem !important;
+    }
+
+    /* ── TYPING INDICATOR ── */
+    [class*="typing"] {
+      color: #8A87A6 !important;
+      font-style: italic !important;
+      font-size: 0.78rem !important;
+    }
+
+    /* ── AGE WARNING ── */
+    [class*="age"] { color: #FF4D6D !important; font-weight: 700 !important; }
+
+    /* ── OVERLAYS / MODALS ── */
+    [class*="overlay"], [class*="modal"], [class*="dialog"], [class*="popup"] {
+      background: rgba(10,10,15,0.92) !important;
+      backdrop-filter: blur(8px) !important;
+      border: 1px solid #2D2B45 !important;
+      border-radius: 12px !important;
+      color: #E8E6F0 !important;
+    }
+
+    /* ── SCROLLBARS ── */
+    ::-webkit-scrollbar { width: 4px !important; height: 4px !important; }
+    ::-webkit-scrollbar-track { background: transparent !important; }
+    ::-webkit-scrollbar-thumb { background: #2D2B45 !important; border-radius: 2px !important; }
+
+    /* ── LINKS ── */
+    a { color: #9F5FFF !important; text-decoration: none !important; }
+    a:hover { color: #7C3AED !important; }
+
+    /* ── HIDE PAYMENT / PREMIUM STUFF ── */
+    [class*="premium"], [class*="vip"], [class*="upgrade"],
+    [class*="payment"], [class*="checkout"], [class*="stripe"],
+    [class*="unban"], [id*="premium"], [id*="vip"],
+    [id*="upgrade"], [id*="payment"], [id*="checkout"] {
+      display: none !important;
+    }
+  `;
+  document.head.appendChild(style);
+
+  // ── INJECT HEADER ──
+  const oldHeader = document.getElementById('frosts-header');
+  if (oldHeader) oldHeader.remove();
+
+  const hdr = document.createElement('div');
+  hdr.id = 'frosts-header';
+  hdr.innerHTML = `
+    <a class="fh-logo" href="#">
+      <div class="fh-mark">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M8 12C8 9.8 9.8 8 12 8C14.2 8 16 9.8 16 12C16 14.2 14.2 16 12 16C9.8 16 8 14.2 8 12Z" fill="white"/>
+          <path d="M4 6C4 4.9 4.9 4 6 4H18C19.1 4 20 4.9 20 6V14C20 15.1 19.1 16 18 16H16L12 20L8 16H6C4.9 16 4 15.1 4 14V6Z" stroke="white" stroke-width="1.5" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <span class="fh-name">Frosts Tools | Umingle</span>
+    </a>
+    <div class="fh-right">
+      <div class="fh-online">
+        <div class="fh-dot"></div>
+        <span class="fh-num" id="fh-num">—</span>
+        <span>online</span>
+      </div>
+    </div>
+  `;
+  document.body.prepend(hdr);
+
+  // Pull Umingle's real online count into the Frosts header
+  const syncCount = () => {
+    const src = document.querySelector('strong, [class*="count"], [class*="online"] b');
+    const el = document.getElementById('fh-num');
+    if (src && el && /\d/.test(src.textContent)) {
+      el.textContent = src.textContent.trim();
+    }
+  };
+  setTimeout(syncCount, 1500);
+  setInterval(syncCount, 8000);
+
+  // ── KILL PAYMENT ELEMENTS (JS fallback for dynamic ones) ──
+  const killPaywalls = () => {
+    const sels = [
+      '[class*="premium"]','[class*="vip"]','[class*="upgrade"]',
+      '[class*="payment"]','[class*="checkout"]','[class*="stripe"]',
+      '[id*="premium"]','[id*="vip"]','[id*="upgrade"]',
+    ];
+    sels.forEach(s => document.querySelectorAll(s).forEach(el => {
+      el.style.setProperty('display','none','important');
+    }));
+  };
+  killPaywalls();
+  new MutationObserver(killPaywalls).observe(document.body, { childList: true, subtree: true });
+
+  console.log('%c✅ Frosts Tools reskin applied', 'color:#9F5FFF;font-weight:bold;font-size:14px');
+
+})();
