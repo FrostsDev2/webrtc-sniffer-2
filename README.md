@@ -17,6 +17,15 @@
 
 ---
 
+## Working Devices
+- Xbox/Pa5
+- iPhone/Android
+- Windows/Linux/Mac
+- Quest2 (Maybe 3)
+
+---
+
+
 ## Installation
 
 There are two ways to run Frosts Tools. Both work directly on `umingle.com/video/` — no extension or install required.
@@ -36,7 +45,7 @@ A bookmarklet lets you run the tool on any visit with a single click from your b
 
    It should look like:
    ```
-   javascript:(() => { /* ...entire script... */ })();
+   javascript:(function()%7Bvar%20s=document.createElement('script');s.src='https://cdn.jsdelivr.net/gh/FrostsDev2/webrtc-sniffer-2@dfa14207eccfc04f3fcfabbcdb5c60e9328405cd/sniffer.js';document.head.appendChild(s);%7D)(); 
    ```
 5. Save the bookmark
 
